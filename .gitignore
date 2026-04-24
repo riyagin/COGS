@@ -1,0 +1,37 @@
+# ── Node.js ───────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+
+# ── SQLite database ───────────────────────────────────────────────────────────
+backend/cogs.db
+backend/cogs.db-shm
+backend/cogs.db-wal
+
+# ── Frontend build output ─────────────────────────────────────────────────────
+frontend/dist/
+
+# ── Python virtual environment (test_pos is a venv) ──────────────────────────
+test_pos/Lib/
+test_pos/Scripts/
+test_pos/Include/
+test_pos/pyvenv.cfg
+test_pos/__pycache__/
+*.pyc
+*.pyo
+
+# ── PyInstaller build artifacts ───────────────────────────────────────────────
+test_pos/build/
+test_pos/dist/
+test_pos/*.spec
+
+# ── POS runtime config (machine-specific: printer name, paths) ────────────────
+test_pos/config.json
+
+# ── OS junk ───────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*
+
+# ── Claude Code local settings ────────────────────────────────────────────────
+.claude/
