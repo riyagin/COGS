@@ -35,3 +35,12 @@ desktop.ini
 
 # ── Claude Code local settings ────────────────────────────────────────────────
 .claude/
+
+# ── Postgres (local PGlite data + secrets) ────────────────────────────────────
+backend/.pgdata/
+.env
+backend/.env
+.vercel/
+
+# ── Unrelated project folder (contains a >100MB binary) ──────────────────────
+kafe sebelah klinik/

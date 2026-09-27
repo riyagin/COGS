@@ -1,113 +1,91 @@
-const Database = require('better-sqlite3');
+// Database access. Two backends behind one small async API:
+//   - DATABASE_URL set  -> real Postgres via `pg` (Supabase in production)
+//   - otherwise         -> PGlite, an embedded Postgres stored in backend/.pgdata (local dev)
+//
+// API:
+//   await db.query(sql, params)  -> rows[]
+//   await db.one(sql, params)    -> first row or undefined
+//   await db.tx(async t => ...)  -> runs fn in a transaction; t has query/one. Throw to roll back.
+const fs = require('fs');
 const path = require('path');
 
-const db = new Database(path.join(__dirname, 'cogs.db'));
+const SCHEMA = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
 
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+let backendPromise = null;
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    unit_type TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+function wrap(run) {
+  const query = async (sql, params = []) => (await run(sql, params)).rows;
+  const one = async (sql, params = []) => (await run(sql, params)).rows[0];
+  return { query, one };
+}
 
-  CREATE TABLE IF NOT EXISTS inventory_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    product_id INTEGER NOT NULL,
-    amount REAL NOT NULL,
-    remaining REAL NOT NULL,
-    price REAL NOT NULL,
-    date_of_purchase TEXT NOT NULL,
-    source TEXT DEFAULT 'purchase',
-    production_id INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id) REFERENCES products(id)
-  );
+async function createPgBackend(url) {
+  const { Pool } = require('pg');
+  const parsed = new URL(url);
+  const isLocal = ['localhost', '127.0.0.1'].includes(parsed.hostname);
+  // Supabase certs are not in Node's default CA store; encrypt but don't verify the chain.
+  // sslmode in the URL would override this object, so strip it.
+  parsed.searchParams.delete('sslmode');
+  const pool = new Pool({
+    connectionString: parsed.toString(),
+    ssl: isLocal ? false : { rejectUnauthorized: false },
+    max: Number(process.env.PG_POOL_MAX || 3), // serverless: keep per-instance pools small
+    idleTimeoutMillis: 10_000,
+  });
 
-  CREATE TABLE IF NOT EXISTS recipes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    output_product_id INTEGER NOT NULL,
-    items_per_batch REAL NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (output_product_id) REFERENCES products(id)
-  );
+  return {
+    ...wrap((sql, params) => pool.query(sql, params)),
+    async tx(fn) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await fn(wrap((sql, params) => client.query(sql, params)));
+        await client.query('COMMIT');
+        return result;
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+    migrate: () => pool.query(SCHEMA),
+    close: () => pool.end(),
+  };
+}
 
-  CREATE TABLE IF NOT EXISTS recipe_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    recipe_id INTEGER NOT NULL,
-    product_id INTEGER NOT NULL,
-    quantity_per_batch REAL NOT NULL,
-    FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES products(id)
-  );
+async function createPgliteBackend(dir) {
+  const { PGlite } = await import('@electric-sql/pglite');
+  const pg = new PGlite(dir);
+  await pg.exec(SCHEMA);
 
-  CREATE TABLE IF NOT EXISTS productions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    recipe_id INTEGER NOT NULL,
-    batches REAL NOT NULL,
-    items_produced REAL NOT NULL,
-    total_cost REAL NOT NULL,
-    unit_cost REAL NOT NULL,
-    date_produced TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (recipe_id) REFERENCES recipes(id)
-  );
+  // PGlite is a single connection; serialize transactions so they can't interleave.
+  let chain = Promise.resolve();
+  return {
+    ...wrap((sql, params) => pg.query(sql, params)),
+    tx(fn) {
+      const run = chain.then(() => pg.transaction(t => fn(wrap((sql, params) => t.query(sql, params)))));
+      chain = run.catch(() => {});
+      return run;
+    },
+    migrate: () => pg.exec(SCHEMA),
+    close: () => pg.close(),
+  };
+}
 
-  CREATE TABLE IF NOT EXISTS invoices (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    invoice_num TEXT,
-    customer_name TEXT,
-    date TEXT,
-    note TEXT,
-    subtotal REAL NOT NULL DEFAULT 0,
-    discount_pct REAL NOT NULL DEFAULT 0,
-    discount REAL NOT NULL DEFAULT 0,
-    tax_rate TEXT,
-    tax REAL NOT NULL DEFAULT 0,
-    total REAL NOT NULL DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+function backend() {
+  if (!backendPromise) {
+    backendPromise = process.env.DATABASE_URL
+      ? createPgBackend(process.env.DATABASE_URL)
+      : createPgliteBackend(process.env.PGLITE_DIR || path.join(__dirname, '.pgdata'));
+  }
+  return backendPromise;
+}
 
-  CREATE TABLE IF NOT EXISTS invoice_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    invoice_id INTEGER NOT NULL,
-    description TEXT NOT NULL,
-    product_id INTEGER,
-    qty REAL NOT NULL,
-    unit_price REAL NOT NULL,
-    subtotal REAL NOT NULL,
-    FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES products(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS stock_adjustments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    product_id INTEGER NOT NULL,
-    quantity REAL NOT NULL,
-    note TEXT,
-    date TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id) REFERENCES products(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS invoice_item_consumptions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    invoice_item_id INTEGER NOT NULL,
-    inventory_item_id INTEGER NOT NULL,
-    quantity REAL NOT NULL,
-    FOREIGN KEY (invoice_item_id) REFERENCES invoice_items(id) ON DELETE CASCADE,
-    FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(id)
-  );
-`);
-
-// Add note column to inventory_items if it doesn't exist yet (migration)
-try { db.exec('ALTER TABLE inventory_items ADD COLUMN note TEXT') } catch (_) {}
-
-// Distinguish manual adjustments from stock opname (physical count) entries
-try { db.exec("ALTER TABLE stock_adjustments ADD COLUMN type TEXT NOT NULL DEFAULT 'manual'") } catch (_) {}
-
-module.exports = db;
+module.exports = {
+  query: async (sql, params) => (await backend()).query(sql, params),
+  one: async (sql, params) => (await backend()).one(sql, params),
+  tx: async fn => (await backend()).tx(fn),
+  migrate: async () => (await backend()).migrate(),
+  close: async () => (await backend()).close(),
+};

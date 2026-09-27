@@ -1,154 +1,101 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { ah, HttpError } = require('../http');
+const { lockProducts, consumeFifo } = require('../fifo');
 
 // GET /api/invoices — list all invoices with their items
-router.get('/', (req, res) => {
-  try {
-    const invoices = db.prepare(`
-      SELECT * FROM invoices ORDER BY created_at DESC
-    `).all();
+router.get('/', ah(async (req, res) => {
+  const invoices = await db.query('SELECT * FROM invoices ORDER BY created_at DESC, id DESC');
+  const items = await db.query(`
+    SELECT ii.*, p.name AS product_name, p.unit_type
+    FROM invoice_items ii
+    LEFT JOIN products p ON p.id = ii.product_id
+    ORDER BY ii.id
+  `);
 
-    const getItems = db.prepare(`
-      SELECT ii.*, p.name as product_name, p.unit_type
-      FROM invoice_items ii
-      LEFT JOIN products p ON p.id = ii.product_id
-      WHERE ii.invoice_id = ?
-    `);
+  const byInvoice = new Map(invoices.map(inv => [inv.id, { ...inv, items: [] }]));
+  for (const item of items) byInvoice.get(item.invoice_id)?.items.push(item);
 
-    const result = invoices.map(inv => ({
-      ...inv,
-      items: getItems.all(inv.id),
-    }));
-
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  res.json([...byInvoice.values()]);
+}));
 
 // POST /api/invoices — save a new invoice (FIFO-consumes inventory lots for sold products)
-router.post('/', (req, res) => {
+router.post('/', ah(async (req, res) => {
   const { invoice_num, customer_name, date, note,
           subtotal, discount_pct, discount, tax_rate,
-          tax, total, items } = req.body;
+          tax, total } = req.body;
+  const items = req.body.items || [];
 
-  const insertInvoice = db.prepare(`
-    INSERT INTO invoices
-      (invoice_num, customer_name, date, note,
-       subtotal, discount_pct, discount, tax_rate, tax, total)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+  const id = await db.tx(async t => {
+    await lockProducts(t, items.filter(i => i.product_id).map(i => i.product_id));
 
-  const insertItem = db.prepare(`
-    INSERT INTO invoice_items
-      (invoice_id, description, product_id, qty, unit_price, subtotal)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
+    const invoice = await t.one(`
+      INSERT INTO invoices
+        (invoice_num, customer_name, date, note,
+         subtotal, discount_pct, discount, tax_rate, tax, total)
+      VALUES ($1, $2, $3, $4, COALESCE($5, 0), COALESCE($6, 0), COALESCE($7, 0), $8, COALESCE($9, 0), COALESCE($10, 0))
+      RETURNING id
+    `, [invoice_num, customer_name, date, note,
+        subtotal, discount_pct, discount, tax_rate, tax, total]);
 
-  const insertConsumption = db.prepare(`
-    INSERT INTO invoice_item_consumptions (invoice_item_id, inventory_item_id, quantity)
-    VALUES (?, ?, ?)
-  `);
+    for (const item of items) {
+      if (item.product_id) {
+        const product = await t.one('SELECT * FROM products WHERE id = $1', [item.product_id]);
+        if (!product) throw new HttpError(404, `Product not found (id ${item.product_id})`);
+      }
 
-  const updateRemaining = db.prepare(`
-    UPDATE inventory_items SET remaining = remaining - ? WHERE id = ?
-  `);
+      const { id: itemId } = await t.one(`
+        INSERT INTO invoice_items
+          (invoice_id, description, product_id, qty, unit_price, subtotal)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
+      `, [invoice.id, item.description, item.product_id ?? null, item.qty, item.unit_price, item.subtotal]);
 
-  try {
-    // Validate stock and plan FIFO consumptions per line item before writing anything
-    const plans = [];
-    for (const item of items || []) {
       if (!item.product_id) continue;
 
-      const product = db.prepare('SELECT * FROM products WHERE id = ?').get(item.product_id);
-      if (!product) return res.status(404).json({ error: `Product not found (id ${item.product_id})` });
-
-      const invRows = db.prepare(`
-        SELECT id, remaining
-        FROM inventory_items
-        WHERE product_id = ? AND remaining > 0
-        ORDER BY date_of_purchase ASC, created_at ASC
-      `).all(item.product_id);
-
-      let toConsume = Number(item.qty);
-      const consumptions = [];
-      for (const inv of invRows) {
-        if (toConsume <= 0.0001) break;
-        const take = Math.min(toConsume, inv.remaining);
-        consumptions.push({ inventory_item_id: inv.id, quantity: take });
-        toConsume -= take;
+      const qty = Number(item.qty);
+      const { ok, available, takes } = await consumeFifo(t, item.product_id, qty);
+      if (!ok) {
+        const product = await t.one('SELECT name, unit_type FROM products WHERE id = $1', [item.product_id]);
+        throw new HttpError(400,
+          `Insufficient stock for "${product.name}". Need ${qty.toFixed(4)}, short by ${(qty - available).toFixed(4)} ${product.unit_type}`);
       }
 
-      if (toConsume > 0.0001) {
-        return res.status(400).json({
-          error: `Insufficient stock for "${product.name}". Need ${Number(item.qty).toFixed(4)}, short by ${toConsume.toFixed(4)} ${product.unit_type}`,
-        });
+      for (const { inventory_item_id, quantity } of takes) {
+        await t.query(
+          'INSERT INTO invoice_item_consumptions (invoice_item_id, inventory_item_id, quantity) VALUES ($1, $2, $3)',
+          [itemId, inventory_item_id, quantity]
+        );
       }
-
-      plans.push({ item, consumptions });
     }
 
-    const run = db.transaction(() => {
-      const { lastInsertRowid } = insertInvoice.run(
-        invoice_num, customer_name, date, note,
-        subtotal, discount_pct, discount, tax_rate, tax, total
-      );
+    return invoice.id;
+  });
 
-      for (const item of items || []) {
-        const { lastInsertRowid: itemId } = insertItem.run(
-          lastInsertRowid,
-          item.description,
-          item.product_id ?? null,
-          item.qty,
-          item.unit_price,
-          item.subtotal
-        );
-
-        const plan = plans.find(p => p.item === item);
-        if (plan) {
-          for (const { inventory_item_id, quantity } of plan.consumptions) {
-            updateRemaining.run(quantity, inventory_item_id);
-            insertConsumption.run(itemId, inventory_item_id, quantity);
-          }
-        }
-      }
-
-      return lastInsertRowid;
-    });
-
-    const id = run();
-    res.status(201).json({ id });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  res.status(201).json({ id });
+}));
 
 // DELETE /api/invoices/:id — restores FIFO-consumed inventory before removing the invoice
-router.delete('/:id', (req, res) => {
-  try {
-    const run = db.transaction(() => {
-      const consumptions = db.prepare(`
-        SELECT c.inventory_item_id, c.quantity
-        FROM invoice_item_consumptions c
-        JOIN invoice_items ii ON ii.id = c.invoice_item_id
-        WHERE ii.invoice_id = ?
-      `).all(req.params.id);
+router.delete('/:id', ah(async (req, res) => {
+  await db.tx(async t => {
+    const consumptions = await t.query(`
+      SELECT c.inventory_item_id, c.quantity, i.product_id
+      FROM invoice_item_consumptions c
+      JOIN invoice_items ii ON ii.id = c.invoice_item_id
+      JOIN inventory_items i ON i.id = c.inventory_item_id
+      WHERE ii.invoice_id = $1
+    `, [req.params.id]);
 
-      const restoreRemaining = db.prepare(`
-        UPDATE inventory_items SET remaining = remaining + ? WHERE id = ?
-      `);
-      for (const { inventory_item_id, quantity } of consumptions) {
-        restoreRemaining.run(quantity, inventory_item_id);
-      }
+    await lockProducts(t, consumptions.map(c => c.product_id));
 
-      db.prepare('DELETE FROM invoices WHERE id = ?').run(req.params.id);
-    });
-    run();
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+    for (const { inventory_item_id, quantity } of consumptions) {
+      await t.query('UPDATE inventory_items SET remaining = remaining + $1 WHERE id = $2', [quantity, inventory_item_id]);
+    }
+
+    await t.query('DELETE FROM invoices WHERE id = $1', [req.params.id]);
+  });
+  res.json({ ok: true });
+}));
 
 module.exports = router;

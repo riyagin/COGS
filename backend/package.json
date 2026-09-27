@@ -5,15 +5,22 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon --ignore .pgdata server.js",
+    "db:migrate": "node scripts/migrate.js",
+    "db:import-sqlite": "node scripts/import-sqlite.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
     "docx": "^9.7.1",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "pg": "^8.23.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "better-sqlite3": "^11.7.0",
     "nodemon": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=20.12"
   }
 }

@@ -1,43 +1,35 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { ah, isUniqueViolation } = require('../http');
 
-router.get('/', (req, res) => {
-  try {
-    const products = db.prepare('SELECT * FROM products ORDER BY name').all();
-    res.json(products);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+router.get('/', ah(async (req, res) => {
+  res.json(await db.query('SELECT * FROM products ORDER BY name'));
+}));
 
-router.post('/', (req, res) => {
+router.post('/', ah(async (req, res) => {
   const { name, unit_type } = req.body;
   if (!name || !unit_type) {
     return res.status(400).json({ error: 'Name and unit type are required' });
   }
   try {
-    const result = db
-      .prepare('INSERT INTO products (name, unit_type) VALUES (?, ?)')
-      .run(name.trim(), unit_type.trim());
-    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(result.lastInsertRowid);
+    const product = await db.one(
+      'INSERT INTO products (name, unit_type) VALUES ($1, $2) RETURNING *',
+      [name.trim(), unit_type.trim()]
+    );
     res.status(201).json(product);
   } catch (err) {
-    if (err.message.includes('UNIQUE')) {
+    if (isUniqueViolation(err)) {
       return res.status(409).json({ error: 'A product with this name already exists' });
     }
-    res.status(500).json({ error: err.message });
+    throw err;
   }
-});
+}));
 
-router.delete('/:id', (req, res) => {
-  try {
-    const result = db.prepare('DELETE FROM products WHERE id = ?').run(req.params.id);
-    if (result.changes === 0) return res.status(404).json({ error: 'Product not found' });
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+router.delete('/:id', ah(async (req, res) => {
+  const rows = await db.query('DELETE FROM products WHERE id = $1 RETURNING id', [req.params.id]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
+  res.json({ success: true });
+}));
 
 module.exports = router;

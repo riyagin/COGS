@@ -9,43 +9,41 @@ database, what each table means, and which traps to avoid when computing metrics
 
 | | |
 |---|---|
-| Engine | **SQLite 3** (single file, no server) |
-| File | `backend/cogs.db` (relative to repo root) |
-| Journal mode | **WAL** — sidecar files `cogs.db-wal` and `cogs.db-shm` are part of the DB |
-| Foreign keys | `PRAGMA foreign_keys = ON` (set by the app at startup; **not** automatic for your connection) |
-| Driver used by the app | `better-sqlite3` (see `backend/db.js`) |
-| Schema owner | `backend/db.js` creates every table with `CREATE TABLE IF NOT EXISTS` on boot |
+| Engine | **PostgreSQL** (Supabase in production) |
+| Production | connection string in the `DATABASE_URL` env var (Vercel project settings / `backend/.env`) |
+| Local dev | when `DATABASE_URL` is unset the app uses **PGlite** (embedded Postgres) in `backend/.pgdata/` |
+| Driver used by the app | `pg` / `@electric-sql/pglite` behind one async API (see `backend/db.js`) |
+| Schema owner | `backend/schema.sql` — apply with `npm run db:migrate` (from `backend/`) |
+| Legacy | the old SQLite file `backend/cogs.db` is no longer used; copy it in once with `npm run db:import-sqlite` |
 
 ### Read it safely
 
-Open **read-only** so you never take a write lock or disturb the WAL:
+Use a read-only transaction so an analysis can never modify data:
 
 ```bash
-sqlite3 "file:backend/cogs.db?mode=ro" "SELECT * FROM products;"
+psql "$DATABASE_URL" -c "SET default_transaction_read_only = on; SELECT * FROM products;"
 ```
 
 ```python
-import sqlite3
-con = sqlite3.connect("file:backend/cogs.db?mode=ro", uri=True)
-con.row_factory = sqlite3.Row
+import psycopg
+con = psycopg.connect(DATABASE_URL, autocommit=True)
+con.execute("SET default_transaction_read_only = on")
 ```
 
 ```js
-const Database = require('better-sqlite3');
-const db = new Database('backend/cogs.db', { readonly: true });
+const { Client } = require('pg');
+const c = new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+await c.connect();
+await c.query('SET default_transaction_read_only = on');
 ```
 
-**Do not copy `cogs.db` alone.** Uncommitted data lives in `cogs.db-wal`. Either copy all
-three files together, or snapshot properly:
-
-```bash
-sqlite3 "file:backend/cogs.db?mode=ro" ".backup snapshot.db"
-```
+Quantities and money are `DOUBLE PRECISION`; `created_at` is `TIMESTAMPTZ`; business dates
+(`date_of_purchase`, `date_produced`, `invoices.date`, `stock_adjustments.date`) are `TEXT`.
 
 ### Alternative: the HTTP API
 
-A read-only JSON view of the same data is served by `backend/server.js` on
-`http://localhost:3001` when running:
+A JSON view of the same data is served by the app (`/api/*` on the deployed site, or
+`http://localhost:3001` when running locally):
 
 | Endpoint | Returns |
 |---|---|
@@ -131,8 +129,8 @@ SELECT price / amount AS unit_price FROM inventory_items WHERE amount > 0;
 
 ```sql
 SELECT id, remaining FROM inventory_items
-WHERE product_id = ? AND remaining > 0
-ORDER BY date_of_purchase ASC, created_at ASC;
+WHERE product_id = $1 AND remaining > 0
+ORDER BY date_of_purchase ASC, created_at ASC, id ASC;
 ```
 
 `source` semantics:
@@ -292,7 +290,7 @@ FROM invoice_items ii
 JOIN invoices inv ON inv.id = ii.invoice_id
 LEFT JOIN invoice_item_consumptions c ON c.invoice_item_id = ii.id
 LEFT JOIN inventory_items l ON l.id = c.inventory_item_id AND l.amount > 0
-GROUP BY ii.id
+GROUP BY ii.id, inv.id
 ORDER BY iso_date DESC;
 ```
 
@@ -320,13 +318,13 @@ FROM products p ORDER BY kind, p.name;
 1. **`inventory_items.price` is a lot total.** Divide by `amount` for a unit price. This is the
    single most common source of wrong numbers here.
 2. **Guard every division** with `amount > 0` / `SUM(remaining) > 0`.
-3. **FIFO is `ORDER BY date_of_purchase ASC, created_at ASC`** — not by `id`, not by `created_at`
+3. **FIFO is `ORDER BY date_of_purchase ASC, created_at ASC, id ASC`** — date first, then `id` only as a tie-break; not by `created_at`
    alone. Matching this exactly is required to reproduce the app's costing.
 4. **Two date conventions coexist**: `invoices.date` is `MM/DD/YYYY`; everything else is
    `YYYY-MM-DD`. All `created_at` values are **UTC**, not local time.
-5. **No currency column.** Amounts are plain REALs, in practice **IDR** (e.g. `19000` for a
+5. **No currency column.** Amounts are plain DOUBLE PRECISION values, in practice **IDR** (e.g. `19000` for a
    500 g bag of Sagu). Nothing enforces this — don't mix in another currency.
-6. **Floats, not decimals.** Every quantity and price is REAL, so totals carry rounding error
+6. **Floats, not decimals.** Every quantity and price is DOUBLE PRECISION, so totals carry rounding error
    (`101581.99318181818`). The app treats **1e-4 as its equality epsilon**; do the same, and
    round only at presentation time.
 7. **Zero-price `adjustment` lots are possible.** A positive manual adjustment writes a lot with
