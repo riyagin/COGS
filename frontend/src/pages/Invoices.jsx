@@ -49,16 +49,16 @@ export default function Invoices() {
       )}
 
       {!loading && invoices.length === 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-12 text-center">
+        <div className="glass-card p-12 text-center">
           <p className="text-gray-400 text-sm">No invoices yet. Print one from the POS app.</p>
         </div>
       )}
 
       {!loading && invoices.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="glass-card overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-gray-50">
+              <tr className="border-b border-white/60 bg-white/30">
                 <th className="text-left px-5 py-3 font-semibold text-gray-600">Invoice #</th>
                 <th className="text-left px-5 py-3 font-semibold text-gray-600">Date</th>
                 <th className="text-left px-5 py-3 font-semibold text-gray-600">Customer</th>
@@ -73,7 +73,7 @@ export default function Invoices() {
                 <>
                   <tr
                     key={inv.id}
-                    className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                    className="border-b border-white/50 hover:bg-white/40 cursor-pointer"
                     onClick={() => toggleExpand(inv.id)}
                   >
                     <td className="px-5 py-3 font-medium text-gray-800">
@@ -98,14 +98,14 @@ export default function Invoices() {
                   </tr>
 
                   {expanded === inv.id && (
-                    <tr key={`${inv.id}-detail`} className="bg-blue-50 border-b border-gray-100">
+                    <tr key={`${inv.id}-detail`} className="bg-indigo-50/60 border-b border-white/50">
                       <td colSpan={7} className="px-8 py-4">
                         {inv.note && (
                           <p className="text-xs text-gray-500 mb-3">Note: {inv.note}</p>
                         )}
                         <table className="w-full text-xs">
                           <thead>
-                            <tr className="text-gray-500 border-b border-blue-200">
+                            <tr className="text-gray-500 border-b border-indigo-200/70">
                               <th className="text-left pb-2 font-semibold">Item</th>
                               <th className="text-right pb-2 font-semibold">Qty</th>
                               <th className="text-right pb-2 font-semibold">Unit Price</th>
@@ -114,7 +114,7 @@ export default function Invoices() {
                           </thead>
                           <tbody>
                             {inv.items.map(item => (
-                              <tr key={item.id} className="border-b border-blue-100 last:border-0">
+                              <tr key={item.id} className="border-b border-indigo-100/70 last:border-0">
                                 <td className="py-1.5 text-gray-700">
                                   {item.description}
                                   {item.product_name && (
@@ -128,7 +128,7 @@ export default function Invoices() {
                             ))}
                           </tbody>
                         </table>
-                        <div className="mt-3 flex justify-end gap-8 text-xs text-gray-600 border-t border-blue-200 pt-3">
+                        <div className="mt-3 flex justify-end gap-8 text-xs text-gray-600 border-t border-indigo-200/70 pt-3">
                           <span>Subtotal: <strong>{rp(inv.subtotal)}</strong></span>
                           {inv.discount > 0 && (
                             <span className="text-red-500">

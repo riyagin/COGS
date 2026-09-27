@@ -42,10 +42,10 @@ export default function Products() {
     <div className="max-w-3xl mx-auto">
       <h2 className="text-2xl font-bold text-gray-800 mb-6">Products</h2>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+      <div className="glass-card p-6 mb-6">
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Register Product</h3>
         {error && (
-          <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-md">
+          <div className="mb-4 text-sm text-red-600 bg-red-50/70 border border-red-200/70 px-3 py-2 rounded-lg">
             {error}
           </div>
         )}
@@ -55,13 +55,13 @@ export default function Products() {
             placeholder="Product name"
             value={form.name}
             onChange={e => setForm({ ...form, name: e.target.value })}
-            className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="flex-1 glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
             required
           />
           <select
             value={form.unit_type}
             onChange={e => setForm({ ...form, unit_type: e.target.value })}
-            className="w-36 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-36 glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
             required
           >
             <option value="">Unit type</option>
@@ -69,14 +69,14 @@ export default function Products() {
           </select>
           <button
             type="submit"
-            className="bg-blue-600 text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+            className="btn-primary px-5 py-2"
           >
             Add
           </button>
         </form>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="glass-card overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-gray-400 text-sm">Loading...</div>
         ) : products.length === 0 ? (
@@ -84,15 +84,15 @@ export default function Products() {
         ) : (
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
+              <tr className="bg-white/30 border-b border-white/60">
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit</th>
                 <th className="px-5 py-3 w-16"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-white/50">
               {products.map(p => (
-                <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={p.id} className="hover:bg-white/40 transition-colors">
                   <td className="px-5 py-3 text-sm font-medium text-gray-800">{p.name}</td>
                   <td className="px-5 py-3 text-sm text-gray-500">{p.unit_type}</td>
                   <td className="px-5 py-3 text-right">

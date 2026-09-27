@@ -102,14 +102,14 @@ export default function Production() {
       <h2 className="text-2xl font-bold text-gray-800 mb-6">Production</h2>
 
       {/* Input panel */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+      <div className="glass-card p-6 mb-6">
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">New Production Run</h3>
 
         {error && (
-          <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-md">{error}</div>
+          <div className="mb-4 text-sm text-red-600 bg-red-50/70 border border-red-200/70 px-3 py-2 rounded-lg">{error}</div>
         )}
         {success && (
-          <div className="mb-4 text-sm text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-md">{success}</div>
+          <div className="mb-4 text-sm text-emerald-600 bg-emerald-50/70 border border-emerald-200/70 px-3 py-2 rounded-lg">{success}</div>
         )}
 
         <div className="grid grid-cols-3 gap-4 mb-6">
@@ -118,7 +118,7 @@ export default function Production() {
             <select
               value={selectedRecipeId}
               onChange={e => { setSelectedRecipeId(e.target.value); setSuccess(''); setError('') }}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
             >
               <option value="">Select recipe</option>
               {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
@@ -133,7 +133,7 @@ export default function Production() {
               placeholder="e.g. 2.5"
               value={batches}
               onChange={e => { setBatches(e.target.value); setSuccess(''); setError('') }}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
             />
           </div>
           <div>
@@ -142,7 +142,7 @@ export default function Production() {
               type="date"
               value={dateProduced}
               onChange={e => setDateProduced(e.target.value)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
             />
           </div>
         </div>
@@ -157,7 +157,7 @@ export default function Production() {
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-semibold text-gray-700">
                 Producing{' '}
-                <span className="text-blue-600">{num(preview.items_produced, 2)} {preview.recipe.output_product_name}</span>
+                <span className="text-indigo-600">{num(preview.items_produced, 2)} {preview.recipe.output_product_name}</span>
                 {' '}({preview.batches} {preview.batches === 1 ? 'batch' : 'batches'})
               </p>
               <div className="text-right">
@@ -166,10 +166,10 @@ export default function Production() {
               </div>
             </div>
 
-            <div className="border border-gray-200 rounded-lg overflow-hidden mb-4">
+            <div className="border border-white/60 rounded-lg overflow-hidden mb-4">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
+                  <tr className="bg-white/30 border-b border-white/60">
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Ingredient</th>
                     <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Qty Needed</th>
                     <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">In Stock</th>
@@ -178,7 +178,7 @@ export default function Production() {
                     <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-white/50">
                   {preview.ingredients.map(ing => (
                     <tr key={ing.product_id} className={!ing.sufficient ? 'bg-red-50' : ''}>
                       <td className="px-4 py-2.5 font-medium text-gray-800">{ing.product_name}</td>
@@ -208,7 +208,7 @@ export default function Production() {
                     </tr>
                   ))}
                 </tbody>
-                <tfoot className="border-t-2 border-gray-200 bg-gray-50">
+                <tfoot className="border-t-2 border-white/60 bg-white/30">
                   <tr>
                     <td colSpan="4" className="px-4 py-2.5 text-right text-sm font-semibold text-gray-600">Total Cost</td>
                     <td className="px-4 py-2.5 text-right text-sm font-bold text-gray-800">{rp(preview.total_cost)}</td>
@@ -216,7 +216,7 @@ export default function Production() {
                   </tr>
                   <tr>
                     <td colSpan="4" className="px-4 py-2.5 text-right text-sm font-semibold text-gray-600">Cost per Unit</td>
-                    <td className="px-4 py-2.5 text-right text-sm font-bold text-blue-600">{rp(preview.unit_cost)}</td>
+                    <td className="px-4 py-2.5 text-right text-sm font-bold text-indigo-600">{rp(preview.unit_cost)}</td>
                     <td></td>
                   </tr>
                 </tfoot>
@@ -227,10 +227,10 @@ export default function Production() {
               <button
                 onClick={handleSubmit}
                 disabled={submitting || !allSufficient}
-                className={`px-6 py-2 rounded-md text-sm font-semibold transition-colors ${
+                className={`px-6 py-2 rounded-lg text-sm font-semibold transition-colors ${
                   allSufficient && !submitting
-                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-[0_4px_14px_rgba(16,185,129,0.35)] hover:from-emerald-600 hover:to-teal-600'
+                    : 'bg-white/60 text-gray-400 cursor-not-allowed'
                 }`}
               >
                 {submitting ? 'Recording...' : 'Confirm Production'}
@@ -244,8 +244,8 @@ export default function Production() {
       </div>
 
       {/* History */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+      <div className="glass-card overflow-hidden">
+        <div className="px-6 py-4 border-b border-white/50 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Production History</h3>
           <span className="text-xs text-gray-400">{history.length} runs</span>
         </div>
@@ -254,7 +254,7 @@ export default function Production() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
+              <tr className="bg-white/30 border-b border-white/60">
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Recipe</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Output</th>
@@ -264,16 +264,16 @@ export default function Production() {
                 <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit Cost</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-white/50">
               {history.map(p => (
-                <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={p.id} className="hover:bg-white/40 transition-colors">
                   <td className="px-4 py-3 text-gray-500">{p.date_produced}</td>
                   <td className="px-4 py-3 font-medium text-gray-800">{p.recipe_name}</td>
                   <td className="px-4 py-3 text-gray-600">{p.output_product_name}</td>
                   <td className="px-4 py-3 text-right text-gray-600">{p.batches}</td>
                   <td className="px-4 py-3 text-right text-gray-600">{num(p.items_produced, 2)}</td>
                   <td className="px-4 py-3 text-right text-gray-700">{rp(p.total_cost)}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-blue-600">{rp(p.unit_cost)}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-indigo-600">{rp(p.unit_cost)}</td>
                 </tr>
               ))}
             </tbody>

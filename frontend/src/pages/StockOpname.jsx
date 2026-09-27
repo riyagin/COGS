@@ -74,18 +74,18 @@ export default function StockOpname() {
 
       <div className="grid grid-cols-3 gap-6 mb-6">
         {/* Opname form */}
-        <div className="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="col-span-2 glass-card p-6">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
             Record Physical Count
           </h3>
 
           {error && (
-            <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-md">
+            <div className="mb-4 text-sm text-red-600 bg-red-50/70 border border-red-200/70 px-3 py-2 rounded-lg">
               {error}
             </div>
           )}
           {success && (
-            <div className="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-md">
+            <div className="mb-4 text-sm text-emerald-700 bg-emerald-50/70 border border-emerald-200/70 px-3 py-2 rounded-lg">
               {success}
             </div>
           )}
@@ -96,7 +96,7 @@ export default function StockOpname() {
               <select
                 value={form.product_id}
                 onChange={e => setForm({ ...form, product_id: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
                 required
               >
                 <option value="">Select product</option>
@@ -120,7 +120,7 @@ export default function StockOpname() {
                 placeholder="e.g. 25"
                 value={form.counted_quantity}
                 onChange={e => setForm({ ...form, counted_quantity: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
                 required
               />
               {hasDelta && (
@@ -144,7 +144,7 @@ export default function StockOpname() {
                 placeholder="e.g. Monthly physical count"
                 value={form.note}
                 onChange={e => setForm({ ...form, note: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
               />
             </div>
 
@@ -154,7 +154,7 @@ export default function StockOpname() {
                 type="date"
                 value={form.date}
                 onChange={e => setForm({ ...form, date: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
                 required
               />
             </div>
@@ -162,7 +162,7 @@ export default function StockOpname() {
             <button
               type="submit"
               disabled={submitting}
-              className="bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary px-6 py-2 font-semibold"
             >
               {submitting ? 'Recording...' : 'Record Count'}
             </button>
@@ -170,19 +170,19 @@ export default function StockOpname() {
         </div>
 
         {/* Stock summary */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
+        <div className="glass-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-white/50">
             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">System Stock</h3>
           </div>
           {loading ? (
             <div className="p-4 text-center text-gray-400 text-sm">Loading...</div>
           ) : (
-            <ul className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
+            <ul className="divide-y divide-white/50 max-h-96 overflow-y-auto">
               {stock.map(p => (
                 <li
                   key={p.id}
-                  className={`px-4 py-2.5 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors ${
-                    form.product_id === String(p.id) ? 'bg-blue-50' : ''
+                  className={`px-4 py-2.5 flex items-center justify-between cursor-pointer hover:bg-white/40 transition-colors ${
+                    form.product_id === String(p.id) ? 'bg-indigo-50/60' : ''
                   }`}
                   onClick={() => setForm(f => ({ ...f, product_id: String(p.id) }))}
                 >
@@ -198,8 +198,8 @@ export default function StockOpname() {
       </div>
 
       {/* Opname history */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+      <div className="glass-card overflow-hidden">
+        <div className="px-6 py-4 border-b border-white/50 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Opname History</h3>
           <span className="text-xs text-gray-400">{history.length} records</span>
         </div>
@@ -208,16 +208,16 @@ export default function StockOpname() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
+              <tr className="bg-white/30 border-b border-white/60">
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
                 <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Adjustment</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Note</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-white/50">
               {history.map(a => (
-                <tr key={a.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={a.id} className="hover:bg-white/40 transition-colors">
                   <td className="px-5 py-3 text-gray-500">{a.date}</td>
                   <td className="px-5 py-3 font-medium text-gray-800">{a.product_name}</td>
                   <td className={`px-5 py-3 text-right font-semibold ${a.quantity > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>

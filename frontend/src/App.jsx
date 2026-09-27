@@ -19,21 +19,23 @@ const NAV = [
 
 function Sidebar() {
   return (
-    <aside className="w-52 shrink-0 bg-gray-900 text-white flex flex-col">
-      <div className="px-5 py-5 border-b border-gray-700">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-0.5">COGS</p>
-        <h1 className="text-lg font-bold text-white leading-tight">Calculator</h1>
+    <aside className="glass-panel w-56 shrink-0 m-4 mr-0 rounded-2xl flex flex-col overflow-hidden">
+      <div className="px-5 py-5 border-b border-white/50">
+        <p className="text-xs font-semibold text-indigo-500/80 uppercase tracking-widest mb-0.5">COGS</p>
+        <h1 className="text-lg font-bold leading-tight bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
+          Calculator
+        </h1>
       </div>
-      <nav className="flex-1 px-3 py-4 space-y-0.5">
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {NAV.map(({ to, label }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) =>
-              `flex items-center px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
+              `flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 isActive
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                  ? 'bg-gradient-to-r from-indigo-500 to-violet-500 text-white shadow-[0_4px_14px_rgba(99,102,241,0.35)]'
+                  : 'text-gray-600 hover:bg-white/50 hover:text-gray-900'
               }`
             }
           >
@@ -48,7 +50,7 @@ function Sidebar() {
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="flex h-screen bg-gray-100 overflow-hidden">
+      <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-y-auto">
           <div className="p-8">

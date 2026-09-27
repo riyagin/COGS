@@ -63,18 +63,18 @@ export default function StockAdjust() {
 
       <div className="grid grid-cols-3 gap-6 mb-6">
         {/* Adjustment form */}
-        <div className="col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="col-span-2 glass-card p-6">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
             Manual Adjustment
           </h3>
 
           {error && (
-            <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-md">
+            <div className="mb-4 text-sm text-red-600 bg-red-50/70 border border-red-200/70 px-3 py-2 rounded-lg">
               {error}
             </div>
           )}
           {success && (
-            <div className="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-md">
+            <div className="mb-4 text-sm text-emerald-700 bg-emerald-50/70 border border-emerald-200/70 px-3 py-2 rounded-lg">
               {success}
             </div>
           )}
@@ -85,7 +85,7 @@ export default function StockAdjust() {
               <select
                 value={form.product_id}
                 onChange={e => setForm({ ...form, product_id: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
                 required
               >
                 <option value="">Select product</option>
@@ -109,12 +109,12 @@ export default function StockAdjust() {
                   placeholder="e.g. 10 or -5"
                   value={form.quantity}
                   onChange={e => setForm({ ...form, quantity: e.target.value })}
-                  className={`w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:border-transparent ${
+                  className={`w-full glass-input px-3 py-2 focus:ring-2 ${
                     isAdd
-                      ? 'border-emerald-400 focus:ring-emerald-400'
+                      ? '!border-emerald-400 focus:ring-emerald-400/60'
                       : isRemove
-                      ? 'border-amber-400 focus:ring-amber-400'
-                      : 'border-gray-300 focus:ring-blue-500'
+                      ? '!border-amber-400 focus:ring-amber-400/60'
+                      : 'focus:ring-indigo-400/60'
                   }`}
                   required
                 />
@@ -142,7 +142,7 @@ export default function StockAdjust() {
                 placeholder="e.g. Stock count correction, damaged goods…"
                 value={form.note}
                 onChange={e => setForm({ ...form, note: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
               />
             </div>
 
@@ -152,7 +152,7 @@ export default function StockAdjust() {
                 type="date"
                 value={form.date}
                 onChange={e => setForm({ ...form, date: e.target.value })}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
                 required
               />
             </div>
@@ -160,12 +160,12 @@ export default function StockAdjust() {
             <button
               type="submit"
               disabled={!!stockWarning}
-              className={`px-6 py-2 rounded-md text-sm font-semibold transition-colors ${
+              className={`px-6 py-2 rounded-lg text-sm font-semibold transition-colors ${
                 stockWarning
-                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  ? 'bg-white/60 text-gray-400 cursor-not-allowed'
                   : isRemove
-                  ? 'bg-amber-500 text-white hover:bg-amber-600'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-[0_4px_14px_rgba(245,158,11,0.35)] hover:from-amber-600 hover:to-orange-600'
+                  : 'btn-primary'
               }`}
             >
               Apply Adjustment
@@ -174,21 +174,21 @@ export default function StockAdjust() {
         </div>
 
         {/* Stock summary */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
+        <div className="glass-card overflow-hidden">
+          <div className="px-4 py-3 border-b border-white/50">
             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Current Stock</h3>
           </div>
           {loading ? (
             <div className="p-4 text-center text-gray-400 text-sm">Loading...</div>
           ) : (
-            <ul className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
+            <ul className="divide-y divide-white/50 max-h-96 overflow-y-auto">
               {stock.map(p => {
                 const isLow = p.total_remaining === 0
                 return (
                   <li
                     key={p.id}
-                    className={`px-4 py-2.5 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors ${
-                      form.product_id === String(p.id) ? 'bg-blue-50' : ''
+                    className={`px-4 py-2.5 flex items-center justify-between cursor-pointer hover:bg-white/40 transition-colors ${
+                      form.product_id === String(p.id) ? 'bg-indigo-50/60' : ''
                     }`}
                     onClick={() => setForm(f => ({ ...f, product_id: String(p.id) }))}
                   >
@@ -205,8 +205,8 @@ export default function StockAdjust() {
       </div>
 
       {/* Adjustment history */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+      <div className="glass-card overflow-hidden">
+        <div className="px-6 py-4 border-b border-white/50 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Adjustment History</h3>
           <span className="text-xs text-gray-400">{history.length} records</span>
         </div>
@@ -215,16 +215,16 @@ export default function StockAdjust() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
+              <tr className="bg-white/30 border-b border-white/60">
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
                 <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Quantity</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Note</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-white/50">
               {history.map(a => (
-                <tr key={a.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={a.id} className="hover:bg-white/40 transition-colors">
                   <td className="px-5 py-3 text-gray-500">{a.date}</td>
                   <td className="px-5 py-3 font-medium text-gray-800">{a.product_name}</td>
                   <td className={`px-5 py-3 text-right font-semibold ${a.quantity > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>

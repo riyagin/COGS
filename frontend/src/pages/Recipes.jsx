@@ -63,7 +63,7 @@ function RecipeForm({ products, recipe, initialData, onSave, onCancel }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       {error && (
-        <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-md">{error}</div>
+        <div className="text-sm text-red-600 bg-red-50/70 border border-red-200/70 px-3 py-2 rounded-lg">{error}</div>
       )}
 
       <div className="grid grid-cols-3 gap-4">
@@ -73,7 +73,7 @@ function RecipeForm({ products, recipe, initialData, onSave, onCancel }) {
             type="text"
             value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
             required
           />
         </div>
@@ -82,7 +82,7 @@ function RecipeForm({ products, recipe, initialData, onSave, onCancel }) {
           <select
             value={form.output_product_id}
             onChange={e => setForm(f => ({ ...f, output_product_id: e.target.value }))}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
             required
           >
             <option value="">Select product</option>
@@ -98,7 +98,7 @@ function RecipeForm({ products, recipe, initialData, onSave, onCancel }) {
             placeholder="e.g. 12"
             value={form.items_per_batch}
             onChange={e => setForm(f => ({ ...f, items_per_batch: e.target.value }))}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
             required
           />
         </div>
@@ -110,28 +110,28 @@ function RecipeForm({ products, recipe, initialData, onSave, onCancel }) {
           <button
             type="button"
             onClick={addIngredient}
-            className="text-xs text-blue-600 hover:text-blue-800 font-semibold"
+            className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
           >
             + Add Row
           </button>
         </div>
-        <div className="border border-gray-200 rounded-md overflow-hidden">
+        <div className="border border-white/60 rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
+              <tr className="bg-white/30 border-b border-white/60">
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">Ingredient</th>
                 <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 w-44">Qty per Batch</th>
                 <th className="px-3 py-2 w-10"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-white/50">
               {form.items.map((item, idx) => (
                 <tr key={idx}>
                   <td className="px-3 py-2">
                     <select
                       value={item.product_id}
                       onChange={e => updateIngredient(idx, 'product_id', e.target.value)}
-                      className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full glass-input px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400/60"
                       required
                     >
                       <option value="">Select ingredient</option>
@@ -146,7 +146,7 @@ function RecipeForm({ products, recipe, initialData, onSave, onCancel }) {
                       placeholder="0.00"
                       value={item.quantity_per_batch}
                       onChange={e => updateIngredient(idx, 'quantity_per_batch', e.target.value)}
-                      className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full glass-input px-2 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400/60"
                       required
                     />
                   </td>
@@ -171,7 +171,7 @@ function RecipeForm({ products, recipe, initialData, onSave, onCancel }) {
       <div className="flex gap-3">
         <button
           type="submit"
-          className="bg-blue-600 text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+          className="btn-primary px-5 py-2"
         >
           {recipe ? 'Update Recipe' : 'Create Recipe'}
         </button>
@@ -179,7 +179,7 @@ function RecipeForm({ products, recipe, initialData, onSave, onCancel }) {
           <button
             type="button"
             onClick={onCancel}
-            className="bg-gray-100 text-gray-600 px-5 py-2 rounded-md text-sm font-medium hover:bg-gray-200 transition-colors"
+            className="bg-white/40 text-gray-600 px-5 py-2 rounded-lg text-sm font-medium hover:bg-white/60 transition-colors"
           >
             Cancel
           </button>
@@ -257,7 +257,7 @@ export default function Recipes() {
         {!showForm && !editingRecipe && (
           <button
             onClick={() => { setShowForm(true); setCopySource(null) }}
-            className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+            className="btn-primary px-4 py-2"
           >
             + New Recipe
           </button>
@@ -265,7 +265,7 @@ export default function Recipes() {
       </div>
 
       {showForm && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-5">
+        <div className="glass-card p-6 mb-5">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
             {copySource ? `Copy of ${copySource.name.replace(/ \(Copy\)$/, '')}` : 'New Recipe'}
           </h3>
@@ -280,8 +280,8 @@ export default function Recipes() {
       )}
 
       {editingRecipe && (
-        <div className="bg-white rounded-xl shadow-sm border border-blue-200 p-6 mb-5">
-          <h3 className="text-sm font-semibold text-blue-600 uppercase tracking-wider mb-4">
+        <div className="glass-card ring-1 ring-indigo-300/60 p-6 mb-5">
+          <h3 className="text-sm font-semibold text-indigo-600 uppercase tracking-wider mb-4">
             Editing: {editingRecipe.name}
           </h3>
           <RecipeForm products={products} recipe={editingRecipe} onSave={handleSave} onCancel={() => setEditingRecipe(null)} />
@@ -290,22 +290,22 @@ export default function Recipes() {
 
       <div className="space-y-2">
         {loading ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center text-gray-400 text-sm">
+          <div className="glass-card p-8 text-center text-gray-400 text-sm">
             Loading...
           </div>
         ) : recipes.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center text-gray-400 text-sm">
+          <div className="glass-card p-8 text-center text-gray-400 text-sm">
             No recipes yet.
           </div>
         ) : (
           recipes.map(recipe => (
-            <div key={recipe.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div key={recipe.id} className="glass-card overflow-hidden">
               <div
-                className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-gray-50 transition-colors select-none"
+                className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-white/40 transition-colors select-none"
                 onClick={() => toggleExpand(recipe.id)}
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-gray-300 text-sm">{expandedId === recipe.id ? '▲' : '▼'}</span>
+                  <span className="text-gray-400 text-sm">{expandedId === recipe.id ? '▲' : '▼'}</span>
                   <div>
                     <span className="font-semibold text-gray-800">{recipe.name}</span>
                     <span className="ml-3 text-sm text-gray-400">
@@ -323,7 +323,7 @@ export default function Recipes() {
                   </a>
                   <button
                     onClick={e => { e.stopPropagation(); handleEdit(recipe.id) }}
-                    className="text-xs text-blue-500 hover:text-blue-700 font-medium transition-colors"
+                    className="text-xs text-indigo-500 hover:text-indigo-700 font-medium transition-colors"
                   >
                     Edit
                   </button>
@@ -343,11 +343,11 @@ export default function Recipes() {
               </div>
 
               {expandedId === recipe.id && (
-                <div className="border-t border-gray-100 px-5 pb-4 pt-3">
+                <div className="border-t border-white/50 px-5 pb-4 pt-3">
                   {recipe.items && recipe.items.length > 0 ? (
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-left border-b border-gray-100">
+                        <tr className="text-left border-b border-white/50">
                           <th className="pb-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Ingredient</th>
                           <th className="pb-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Qty per Batch</th>
                           <th className="pb-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit</th>
