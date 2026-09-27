@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react'
 
-function RecipeForm({ products, recipe, onSave, onCancel }) {
+const num = (n, d = 2) => Number(n).toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d })
+
+function RecipeForm({ products, recipe, initialData, onSave, onCancel }) {
   const [form, setForm] = useState(() => {
-    if (recipe) {
+    const source = recipe || initialData
+    if (source) {
       return {
-        name: recipe.name,
-        output_product_id: String(recipe.output_product_id),
-        items_per_batch: String(recipe.items_per_batch),
-        items: (recipe.items || []).map(i => ({
+        name: source.name,
+        output_product_id: String(source.output_product_id),
+        items_per_batch: String(source.items_per_batch),
+        items: (source.items || []).map(i => ({
           product_id: String(i.product_id),
           quantity_per_batch: String(i.quantity_per_batch),
         })),
@@ -191,6 +194,7 @@ export default function Recipes() {
   const [products, setProducts] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [editingRecipe, setEditingRecipe] = useState(null)
+  const [copySource, setCopySource] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -214,6 +218,15 @@ export default function Recipes() {
     const full = await fetch(`/api/recipes/${id}`).then(r => r.json())
     setEditingRecipe(full)
     setShowForm(false)
+    setCopySource(null)
+    setExpandedId(null)
+  }
+
+  async function handleCopy(id) {
+    const full = await fetch(`/api/recipes/${id}`).then(r => r.json())
+    setCopySource({ ...full, name: `${full.name} (Copy)` })
+    setShowForm(true)
+    setEditingRecipe(null)
     setExpandedId(null)
   }
 
@@ -233,6 +246,7 @@ export default function Recipes() {
     } else {
       setRecipes(prev => [...prev, saved].sort((a, b) => a.name.localeCompare(b.name)))
       setShowForm(false)
+      setCopySource(null)
     }
   }
 
@@ -242,7 +256,7 @@ export default function Recipes() {
         <h2 className="text-2xl font-bold text-gray-800">Recipes</h2>
         {!showForm && !editingRecipe && (
           <button
-            onClick={() => setShowForm(true)}
+            onClick={() => { setShowForm(true); setCopySource(null) }}
             className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
           >
             + New Recipe
@@ -252,8 +266,16 @@ export default function Recipes() {
 
       {showForm && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-5">
-          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">New Recipe</h3>
-          <RecipeForm products={products} onSave={handleSave} onCancel={() => setShowForm(false)} />
+          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
+            {copySource ? `Copy of ${copySource.name.replace(/ \(Copy\)$/, '')}` : 'New Recipe'}
+          </h3>
+          <RecipeForm
+            key={copySource?.id ?? 'new'}
+            products={products}
+            initialData={copySource}
+            onSave={handleSave}
+            onCancel={() => { setShowForm(false); setCopySource(null) }}
+          />
         </div>
       )}
 
@@ -287,16 +309,29 @@ export default function Recipes() {
                   <div>
                     <span className="font-semibold text-gray-800">{recipe.name}</span>
                     <span className="ml-3 text-sm text-gray-400">
-                      → {recipe.output_product_name} · {recipe.items_per_batch} {recipe.unit_type} per batch
+                      → {recipe.output_product_name} · {num(recipe.items_per_batch)} {recipe.unit_type} per batch
                     </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
+                  <a
+                    href={`/api/recipes/${recipe.id}/word`}
+                    onClick={e => e.stopPropagation()}
+                    className="text-xs text-emerald-600 hover:text-emerald-800 font-medium transition-colors"
+                  >
+                    Download Word
+                  </a>
                   <button
                     onClick={e => { e.stopPropagation(); handleEdit(recipe.id) }}
                     className="text-xs text-blue-500 hover:text-blue-700 font-medium transition-colors"
                   >
                     Edit
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); handleCopy(recipe.id) }}
+                    className="text-xs text-gray-500 hover:text-gray-700 font-medium transition-colors"
+                  >
+                    Copy
                   </button>
                   <button
                     onClick={e => { e.stopPropagation(); handleDelete(recipe.id) }}
@@ -322,7 +357,7 @@ export default function Recipes() {
                         {recipe.items.map(item => (
                           <tr key={item.id}>
                             <td className="py-2 text-gray-700">{item.product_name}</td>
-                            <td className="py-2 text-right text-gray-600">{item.quantity_per_batch}</td>
+                            <td className="py-2 text-right text-gray-600">{num(item.quantity_per_batch)}</td>
                             <td className="py-2 text-right text-gray-400">{item.unit_type}</td>
                           </tr>
                         ))}

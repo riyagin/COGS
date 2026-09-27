@@ -4,6 +4,8 @@ import Inventory from './pages/Inventory'
 import Recipes from './pages/Recipes'
 import Production from './pages/Production'
 import Invoices from './pages/Invoices'
+import StockAdjust from './pages/StockAdjust'
+import StockOpname from './pages/StockOpname'
 
 const NAV = [
   { to: '/products', label: 'Products' },
@@ -11,6 +13,8 @@ const NAV = [
   { to: '/recipes', label: 'Recipes' },
   { to: '/production', label: 'Production' },
   { to: '/invoices', label: 'Invoices' },
+  { to: '/stock-adjust', label: 'Stock Adjust' },
+  { to: '/stock-opname', label: 'Stock Opname' },
 ]
 
 function Sidebar() {
@@ -55,6 +59,8 @@ export default function App() {
               <Route path="/recipes" element={<Recipes />} />
               <Route path="/production" element={<Production />} />
               <Route path="/invoices" element={<Invoices />} />
+              <Route path="/stock-adjust" element={<StockAdjust />} />
+              <Route path="/stock-opname" element={<StockOpname />} />
             </Routes>
           </div>
         </main>

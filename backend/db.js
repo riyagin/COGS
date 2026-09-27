@@ -83,6 +83,31 @@ db.exec(`
     FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
     FOREIGN KEY (product_id) REFERENCES products(id)
   );
+
+  CREATE TABLE IF NOT EXISTS stock_adjustments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL,
+    quantity REAL NOT NULL,
+    note TEXT,
+    date TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES products(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS invoice_item_consumptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_item_id INTEGER NOT NULL,
+    inventory_item_id INTEGER NOT NULL,
+    quantity REAL NOT NULL,
+    FOREIGN KEY (invoice_item_id) REFERENCES invoice_items(id) ON DELETE CASCADE,
+    FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(id)
+  );
 `);
+
+// Add note column to inventory_items if it doesn't exist yet (migration)
+try { db.exec('ALTER TABLE inventory_items ADD COLUMN note TEXT') } catch (_) {}
+
+// Distinguish manual adjustments from stock opname (physical count) entries
+try { db.exec("ALTER TABLE stock_adjustments ADD COLUMN type TEXT NOT NULL DEFAULT 'manual'") } catch (_) {}
 
 module.exports = db;

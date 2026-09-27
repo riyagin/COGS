@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 const today = () => new Date().toISOString().split('T')[0]
 
 const rp = n => 'Rp ' + Number(n).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
-const num = (n, d = 4) => Number(n).toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d })
+const num = (n, d = 2) => Number(n).toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d })
 
 const PAGE_SIZE = 20
 

@@ -12,6 +12,7 @@ app.use('/api/inventory', require('./routes/inventory'));
 app.use('/api/recipes', require('./routes/recipes'));
 app.use('/api/production', require('./routes/production'));
 app.use('/api/invoices', require('./routes/invoices'));
+app.use('/api/adjustments', require('./routes/adjustments'));
 
 app.listen(PORT, () => {
   console.log(`COGS Backend running on http://localhost:${PORT}`);
