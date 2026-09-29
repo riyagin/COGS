@@ -1,0 +1,9 @@
+{
+  "appId": "com.riyagin.cogs",
+  "appName": "COGS Calculator",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#eef0fb",
+    "adjustMarginsForEdgeToEdge": "auto"
+  }
+}

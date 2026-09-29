@@ -53,7 +53,28 @@ export async function apiDownload(path, fallbackName) {
     throw new Error(data.error || 'Download failed')
   }
   const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || fallbackName
-  const url = URL.createObjectURL(await res.blob())
+  const blob = await res.blob()
+
+  // Android app: WebView ignores download links, so save the file and open the share sheet
+  // (open in Word, send via WhatsApp, save to Drive, ...)
+  const { Capacitor } = await import('@capacitor/core')
+  if (Capacitor.isNativePlatform()) {
+    const [{ Filesystem, Directory }, { Share }] = await Promise.all([
+      import('@capacitor/filesystem'),
+      import('@capacitor/share'),
+    ])
+    const data = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result).split(',')[1])
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(blob)
+    })
+    const { uri } = await Filesystem.writeFile({ path: name, data, directory: Directory.Cache })
+    await Share.share({ title: name, url: uri })
+    return
+  }
+
+  const url = URL.createObjectURL(blob)
   const a = Object.assign(document.createElement('a'), { href: url, download: name })
   a.click()
   URL.revokeObjectURL(url)

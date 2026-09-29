@@ -117,11 +117,11 @@ export default function Users() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Users</h2>
+      <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Users</h2>
 
       {temp && <TemporaryPassword info={temp} onClose={() => setTemp(null)} />}
 
-      <div className="glass-card p-6 mb-6">
+      <div className="glass-card p-4 sm:p-6 mb-6">
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">Add User</h3>
         <p className="text-xs text-gray-500 mb-4">
           You'll get a temporary password to give them. They choose their own at first sign-in.

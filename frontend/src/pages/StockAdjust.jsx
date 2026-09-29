@@ -60,11 +60,11 @@ export default function StockAdjust() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Stock Adjustment</h2>
+      <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Stock Adjustment</h2>
 
-      <div className="grid grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         {/* Adjustment form */}
-        <div className="col-span-2 glass-card p-6">
+        <div className="md:col-span-2 glass-card p-4 sm:p-6">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
             Manual Adjustment
           </h3>
@@ -207,7 +207,7 @@ export default function StockAdjust() {
 
       {/* Adjustment history */}
       <div className="glass-card overflow-hidden">
-        <div className="px-6 py-4 border-b border-white/50 flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-4 border-b border-white/50 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Adjustment History</h3>
           <span className="text-xs text-gray-400">{history.length} records</span>
         </div>

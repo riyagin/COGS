@@ -65,16 +65,16 @@ export default function Inventory() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Inventory</h2>
+      <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Inventory</h2>
 
-      <div className="glass-card p-6 mb-6">
+      <div className="glass-card p-4 sm:p-6 mb-6">
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Record Purchase</h3>
         {error && (
           <div className="mb-4 text-sm text-red-600 bg-red-50/70 border border-red-200/70 px-3 py-2 rounded-lg">
             {error}
           </div>
         )}
-        <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Product</label>
             <select
@@ -132,7 +132,7 @@ export default function Inventory() {
               required
             />
           </div>
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <button
               type="submit"
               className="btn-primary px-5 py-2"
@@ -145,11 +145,11 @@ export default function Inventory() {
 
       <div className="glass-card overflow-hidden">
         {/* Header with search */}
-        <div className="px-6 py-4 border-b border-white/50 flex items-center gap-4">
+        <div className="px-4 sm:px-6 py-4 border-b border-white/50 flex flex-wrap items-center gap-3 sm:gap-4">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider shrink-0">
             Inventory Entries
           </h3>
-          <div className="flex-1 max-w-xs relative">
+          <div className="flex-1 min-w-[10rem] max-w-xs relative">
             <input
               type="text"
               placeholder="Search by product name…"
@@ -239,7 +239,7 @@ export default function Inventory() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="px-6 py-3 border-t border-white/50 flex items-center justify-between">
+              <div className="px-4 sm:px-6 py-3 border-t border-white/50 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs text-gray-400">
                   Page {safePage} of {totalPages} · showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
                 </span>

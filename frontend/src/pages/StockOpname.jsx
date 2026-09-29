@@ -73,9 +73,9 @@ export default function StockOpname() {
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         {/* Opname form */}
-        <div className="col-span-2 glass-card p-6">
+        <div className="md:col-span-2 glass-card p-4 sm:p-6">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
             Record Physical Count
           </h3>
@@ -200,7 +200,7 @@ export default function StockOpname() {
 
       {/* Opname history */}
       <div className="glass-card overflow-hidden">
-        <div className="px-6 py-4 border-b border-white/50 flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-4 border-b border-white/50 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Opname History</h3>
           <span className="text-xs text-gray-400">{history.length} records</span>
         </div>

@@ -37,7 +37,7 @@ export default function Invoices() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Invoices</h2>
           <p className="text-sm text-gray-500 mt-0.5">Invoice history from the POS terminal</p>

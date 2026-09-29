@@ -100,10 +100,10 @@ export default function Production() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Production</h2>
+      <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Production</h2>
 
       {/* Input panel */}
-      <div className="glass-card p-6 mb-6">
+      <div className="glass-card p-4 sm:p-6 mb-6">
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">New Production Run</h3>
 
         {error && (
@@ -113,7 +113,7 @@ export default function Production() {
           <div className="mb-4 text-sm text-emerald-600 bg-emerald-50/70 border border-emerald-200/70 px-3 py-2 rounded-lg">{success}</div>
         )}
 
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Recipe</label>
             <select
@@ -246,7 +246,7 @@ export default function Production() {
 
       {/* History */}
       <div className="glass-card overflow-hidden">
-        <div className="px-6 py-4 border-b border-white/50 flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-4 border-b border-white/50 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Production History</h3>
           <span className="text-xs text-gray-400">{history.length} runs</span>
         </div>

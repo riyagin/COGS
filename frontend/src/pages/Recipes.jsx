@@ -67,8 +67,8 @@ function RecipeForm({ products, recipe, initialData, onSave, onCancel }) {
         <div className="text-sm text-red-600 bg-red-50/70 border border-red-200/70 px-3 py-2 rounded-lg">{error}</div>
       )}
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-1">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="md:col-span-1">
           <label className="block text-xs font-medium text-gray-600 mb-1">Recipe Name</label>
           <input
             type="text"
@@ -78,7 +78,7 @@ function RecipeForm({ products, recipe, initialData, onSave, onCancel }) {
             required
           />
         </div>
-        <div className="col-span-1">
+        <div className="md:col-span-1">
           <label className="block text-xs font-medium text-gray-600 mb-1">Output Product</label>
           <select
             value={form.output_product_id}
@@ -90,7 +90,7 @@ function RecipeForm({ products, recipe, initialData, onSave, onCancel }) {
             {products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.unit_type})</option>)}
           </select>
         </div>
-        <div className="col-span-1">
+        <div className="md:col-span-1">
           <label className="block text-xs font-medium text-gray-600 mb-1">Units Made per Batch</label>
           <input
             type="number"
@@ -169,7 +169,7 @@ function RecipeForm({ products, recipe, initialData, onSave, onCancel }) {
         </div>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <button
           type="submit"
           className="btn-primary px-5 py-2"
@@ -253,7 +253,7 @@ export default function Recipes() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <h2 className="text-2xl font-bold text-gray-800">Recipes</h2>
         {!showForm && !editingRecipe && (
           <button
@@ -266,7 +266,7 @@ export default function Recipes() {
       </div>
 
       {showForm && (
-        <div className="glass-card p-6 mb-5">
+        <div className="glass-card p-4 sm:p-6 mb-5">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
             {copySource ? `Copy of ${copySource.name.replace(/ \(Copy\)$/, '')}` : 'New Recipe'}
           </h3>
@@ -302,7 +302,7 @@ export default function Recipes() {
           recipes.map(recipe => (
             <div key={recipe.id} className="glass-card overflow-hidden">
               <div
-                className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-white/40 transition-colors select-none"
+                className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-4 cursor-pointer hover:bg-white/40 transition-colors select-none"
                 onClick={() => toggleExpand(recipe.id)}
               >
                 <div className="flex items-center gap-3">
