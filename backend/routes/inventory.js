@@ -8,9 +8,11 @@ const LOT_SELECT = `
     i.*,
     p.name AS product_name,
     p.unit_type,
-    ROUND((i.price / i.amount)::numeric, 6)::float8 AS unit_price
+    ROUND((i.price / i.amount)::numeric, 6)::float8 AS unit_price,
+    COALESCE(u.name, u.email) AS created_by_name
   FROM inventory_items i
   JOIN products p ON i.product_id = p.id
+  LEFT JOIN users u ON u.id = i.created_by
 `;
 
 router.get('/', ah(async (req, res) => {
@@ -46,10 +48,10 @@ router.post('/', ah(async (req, res) => {
     return res.status(400).json({ error: 'Amount and price must be positive' });
   }
   const { id } = await db.one(`
-    INSERT INTO inventory_items (product_id, amount, remaining, price, date_of_purchase, source)
-    VALUES ($1, $2, $2, $3, $4, 'purchase')
+    INSERT INTO inventory_items (product_id, amount, remaining, price, date_of_purchase, source, created_by)
+    VALUES ($1, $2, $2, $3, $4, 'purchase', $5)
     RETURNING id
-  `, [product_id, amount, price, date_of_purchase]);
+  `, [product_id, amount, price, date_of_purchase, req.user.id]);
 
   res.status(201).json(await db.one(`${LOT_SELECT} WHERE i.id = $1`, [id]));
 }));

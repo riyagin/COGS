@@ -94,3 +94,23 @@ CREATE TABLE IF NOT EXISTS stock_adjustments (
   type        TEXT NOT NULL DEFAULT 'manual',
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ── Users & access ───────────────────────────────────────────────────────────
+-- Allowlist of people who may sign in (Google via Supabase Auth), matched by email.
+-- role: 'admin' (manage users + everything), 'staff' (read/write), 'viewer' (read-only)
+CREATE TABLE IF NOT EXISTS users (
+  id             SERIAL PRIMARY KEY,
+  email          TEXT NOT NULL UNIQUE,
+  name           TEXT,
+  role           TEXT NOT NULL DEFAULT 'staff' CHECK (role IN ('admin', 'staff', 'viewer')),
+  active         BOOLEAN NOT NULL DEFAULT true,
+  auth_user_id   UUID UNIQUE,
+  last_login_at  TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Who recorded each movement (NULL for rows created before sign-in existed)
+ALTER TABLE inventory_items   ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id);
+ALTER TABLE productions       ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id);
+ALTER TABLE invoices          ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id);
+ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id);

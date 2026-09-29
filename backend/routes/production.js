@@ -5,10 +5,12 @@ const { ah, HttpError } = require('../http');
 const { lockProducts, consumeFifo } = require('../fifo');
 
 const PRODUCTION_SELECT = `
-  SELECT pr.*, r.name AS recipe_name, p.name AS output_product_name, p.unit_type
+  SELECT pr.*, r.name AS recipe_name, p.name AS output_product_name, p.unit_type,
+         COALESCE(u.name, u.email) AS created_by_name
   FROM productions pr
   JOIN recipes r ON pr.recipe_id = r.id
   JOIN products p ON r.output_product_id = p.id
+  LEFT JOIN users u ON u.id = pr.created_by
 `;
 
 router.get('/', ah(async (req, res) => {
@@ -126,16 +128,16 @@ router.post('/', ah(async (req, res) => {
     const unitCost = itemsProduced > 0 ? totalCost / itemsProduced : 0;
 
     const { id } = await t.one(`
-      INSERT INTO productions (recipe_id, batches, items_produced, total_cost, unit_cost, date_produced)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO productions (recipe_id, batches, items_produced, total_cost, unit_cost, date_produced, created_by)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING id
-    `, [recipe_id, batchCount, itemsProduced, totalCost, unitCost, date_produced]);
+    `, [recipe_id, batchCount, itemsProduced, totalCost, unitCost, date_produced, req.user.id]);
 
     // Add produced items back into inventory
     await t.query(`
-      INSERT INTO inventory_items (product_id, amount, remaining, price, date_of_purchase, source, production_id)
-      VALUES ($1, $2, $2, $3, $4, 'production', $5)
-    `, [recipe.output_product_id, itemsProduced, totalCost, date_produced, id]);
+      INSERT INTO inventory_items (product_id, amount, remaining, price, date_of_purchase, source, production_id, created_by)
+      VALUES ($1, $2, $2, $3, $4, 'production', $5, $6)
+    `, [recipe.output_product_id, itemsProduced, totalCost, date_produced, id, req.user.id]);
 
     return id;
   });

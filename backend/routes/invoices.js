@@ -6,7 +6,12 @@ const { lockProducts, consumeFifo } = require('../fifo');
 
 // GET /api/invoices — list all invoices with their items
 router.get('/', ah(async (req, res) => {
-  const invoices = await db.query('SELECT * FROM invoices ORDER BY created_at DESC, id DESC');
+  const invoices = await db.query(`
+    SELECT inv.*, COALESCE(u.name, u.email) AS created_by_name
+    FROM invoices inv
+    LEFT JOIN users u ON u.id = inv.created_by
+    ORDER BY inv.created_at DESC, inv.id DESC
+  `);
   const items = await db.query(`
     SELECT ii.*, p.name AS product_name, p.unit_type
     FROM invoice_items ii
@@ -33,11 +38,11 @@ router.post('/', ah(async (req, res) => {
     const invoice = await t.one(`
       INSERT INTO invoices
         (invoice_num, customer_name, date, note,
-         subtotal, discount_pct, discount, tax_rate, tax, total)
-      VALUES ($1, $2, $3, $4, COALESCE($5, 0), COALESCE($6, 0), COALESCE($7, 0), $8, COALESCE($9, 0), COALESCE($10, 0))
+         subtotal, discount_pct, discount, tax_rate, tax, total, created_by)
+      VALUES ($1, $2, $3, $4, COALESCE($5, 0), COALESCE($6, 0), COALESCE($7, 0), $8, COALESCE($9, 0), COALESCE($10, 0), $11)
       RETURNING id
     `, [invoice_num, customer_name, date, note,
-        subtotal, discount_pct, discount, tax_rate, tax, total]);
+        subtotal, discount_pct, discount, tax_rate, tax, total, req.user.id]);
 
     for (const item of items) {
       if (item.product_id) {

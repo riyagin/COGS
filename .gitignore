@@ -40,6 +40,8 @@ desktop.ini
 backend/.pgdata/
 .env
 backend/.env
+.env.local
+.env.*.local
 .vercel/
 
 # ── Unrelated project folder (contains a >100MB binary) ──────────────────────

@@ -7,9 +7,10 @@ const { lockProducts, consumeFifo } = require('../fifo');
 // GET adjustment history (most recent first)
 router.get('/', ah(async (req, res) => {
   res.json(await db.query(`
-    SELECT a.*, p.name AS product_name, p.unit_type
+    SELECT a.*, p.name AS product_name, p.unit_type, COALESCE(u.name, u.email) AS created_by_name
     FROM stock_adjustments a
     JOIN products p ON a.product_id = p.id
+    LEFT JOIN users u ON u.id = a.created_by
     ORDER BY a.date DESC, a.created_at DESC, a.id DESC
     LIMIT 200
   `));
@@ -49,9 +50,9 @@ router.post('/', ah(async (req, res) => {
     if (qty > 0) {
       // Positive adjustment: add a zero-cost inventory entry
       await t.query(`
-        INSERT INTO inventory_items (product_id, amount, remaining, price, date_of_purchase, source, note)
-        VALUES ($1, $2, $2, 0, $3, 'adjustment', $4)
-      `, [product_id, qty, date, note || null]);
+        INSERT INTO inventory_items (product_id, amount, remaining, price, date_of_purchase, source, note, created_by)
+        VALUES ($1, $2, $2, 0, $3, 'adjustment', $4, $5)
+      `, [product_id, qty, date, note || null, req.user.id]);
     } else {
       // Negative adjustment: FIFO consume from existing inventory
       const absQty = Math.abs(qty);
@@ -64,17 +65,18 @@ router.post('/', ah(async (req, res) => {
     }
 
     const { id } = await t.one(`
-      INSERT INTO stock_adjustments (product_id, quantity, note, date)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO stock_adjustments (product_id, quantity, note, date, created_by)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING id
-    `, [product_id, qty, note || null, date]);
+    `, [product_id, qty, note || null, date, req.user.id]);
     return id;
   });
 
   res.status(201).json(await db.one(`
-    SELECT a.*, p.name AS product_name, p.unit_type
+    SELECT a.*, p.name AS product_name, p.unit_type, COALESCE(u.name, u.email) AS created_by_name
     FROM stock_adjustments a
     JOIN products p ON a.product_id = p.id
+    LEFT JOIN users u ON u.id = a.created_by
     WHERE a.id = $1
   `, [adjustmentId]));
 }));
@@ -123,18 +125,18 @@ router.post('/opname', ah(async (req, res) => {
       }
 
       await t.query(`
-        INSERT INTO inventory_items (product_id, amount, remaining, price, date_of_purchase, source, note)
-        VALUES ($1, $2, $2, $3, $4, 'opname', $5)
-      `, [product_id, delta, price * delta, date, opnameNote]);
+        INSERT INTO inventory_items (product_id, amount, remaining, price, date_of_purchase, source, note, created_by)
+        VALUES ($1, $2, $2, $3, $4, 'opname', $5, $6)
+      `, [product_id, delta, price * delta, date, opnameNote, req.user.id]);
     } else {
       // Negative delta can never exceed total_remaining, so this always succeeds
       await consumeFifo(t, product_id, Math.abs(delta));
     }
 
     await t.query(`
-      INSERT INTO stock_adjustments (product_id, quantity, note, date, type)
-      VALUES ($1, $2, $3, $4, 'opname')
-    `, [product_id, delta, opnameNote, date]);
+      INSERT INTO stock_adjustments (product_id, quantity, note, date, type, created_by)
+      VALUES ($1, $2, $3, $4, 'opname', $5)
+    `, [product_id, delta, opnameNote, date, req.user.id]);
 
     return { total_remaining, delta };
   });

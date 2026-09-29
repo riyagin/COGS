@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiFetch } from '../lib/api'
 
 const today = () => new Date().toISOString().split('T')[0]
 const num = (n, d = 2) => Number(n).toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d })
@@ -17,8 +18,8 @@ export default function StockAdjust() {
 
   async function fetchAll() {
     const [stockRes, histRes] = await Promise.all([
-      fetch('/api/adjustments/stock').then(r => r.json()),
-      fetch('/api/adjustments').then(r => r.json()),
+      apiFetch('/api/adjustments/stock').then(r => r.json()),
+      apiFetch('/api/adjustments').then(r => r.json()),
     ])
     setStock(stockRes)
     setHistory(histRes)
@@ -30,7 +31,7 @@ export default function StockAdjust() {
     setError('')
     setSuccess('')
 
-    const res = await fetch('/api/adjustments', {
+    const res = await apiFetch('/api/adjustments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form),

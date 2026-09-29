@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiFetch, apiDownload } from '../lib/api'
 
 const num = (n, d = 2) => Number(n).toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d })
 
@@ -50,7 +51,7 @@ function RecipeForm({ products, recipe, initialData, onSave, onCancel }) {
     }
     const url = recipe ? `/api/recipes/${recipe.id}` : '/api/recipes'
     const method = recipe ? 'PUT' : 'POST'
-    const res = await fetch(url, {
+    const res = await apiFetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -199,7 +200,7 @@ export default function Recipes() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([fetch('/api/recipes').then(r => r.json()), fetch('/api/products').then(r => r.json())])
+    Promise.all([apiFetch('/api/recipes').then(r => r.json()), apiFetch('/api/products').then(r => r.json())])
       .then(([rec, prod]) => { setRecipes(rec); setProducts(prod); setLoading(false) })
   }, [])
 
@@ -208,14 +209,14 @@ export default function Recipes() {
     // Load with items if not already loaded
     const existing = recipes.find(r => r.id === id)
     if (!existing.items) {
-      const full = await fetch(`/api/recipes/${id}`).then(r => r.json())
+      const full = await apiFetch(`/api/recipes/${id}`).then(r => r.json())
       setRecipes(prev => prev.map(r => r.id === id ? full : r))
     }
     setExpandedId(id)
   }
 
   async function handleEdit(id) {
-    const full = await fetch(`/api/recipes/${id}`).then(r => r.json())
+    const full = await apiFetch(`/api/recipes/${id}`).then(r => r.json())
     setEditingRecipe(full)
     setShowForm(false)
     setCopySource(null)
@@ -223,7 +224,7 @@ export default function Recipes() {
   }
 
   async function handleCopy(id) {
-    const full = await fetch(`/api/recipes/${id}`).then(r => r.json())
+    const full = await apiFetch(`/api/recipes/${id}`).then(r => r.json())
     setCopySource({ ...full, name: `${full.name} (Copy)` })
     setShowForm(true)
     setEditingRecipe(null)
@@ -232,7 +233,7 @@ export default function Recipes() {
 
   async function handleDelete(id) {
     if (!confirm('Delete this recipe?')) return
-    const res = await fetch(`/api/recipes/${id}`, { method: 'DELETE' })
+    const res = await apiFetch(`/api/recipes/${id}`, { method: 'DELETE' })
     if (res.ok) {
       setRecipes(prev => prev.filter(r => r.id !== id))
       if (expandedId === id) setExpandedId(null)
@@ -314,13 +315,15 @@ export default function Recipes() {
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <a
-                    href={`/api/recipes/${recipe.id}/word`}
-                    onClick={e => e.stopPropagation()}
+                  <button
+                    onClick={e => {
+                      e.stopPropagation()
+                      apiDownload(`/api/recipes/${recipe.id}/word`, `${recipe.name}.docx`).catch(err => alert(err.message))
+                    }}
                     className="text-xs text-emerald-600 hover:text-emerald-800 font-medium transition-colors"
                   >
                     Download Word
-                  </a>
+                  </button>
                   <button
                     onClick={e => { e.stopPropagation(); handleEdit(recipe.id) }}
                     className="text-xs text-indigo-500 hover:text-indigo-700 font-medium transition-colors"

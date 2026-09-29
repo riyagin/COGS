@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiFetch } from '../lib/api'
 
 function rp(n) {
   return 'Rp ' + Number(n).toLocaleString('id-ID', {
@@ -18,7 +19,7 @@ export default function Invoices() {
 
   function fetchInvoices() {
     setLoading(true)
-    fetch('/api/invoices')
+    apiFetch('/api/invoices')
       .then(r => r.json())
       .then(data => { setInvoices(data); setLoading(false) })
       .catch(() => setLoading(false))
@@ -26,7 +27,7 @@ export default function Invoices() {
 
   function handleDelete(id) {
     if (!confirm('Delete this invoice?')) return
-    fetch(`/api/invoices/${id}`, { method: 'DELETE' })
+    apiFetch(`/api/invoices/${id}`, { method: 'DELETE' })
       .then(() => setInvoices(prev => prev.filter(inv => inv.id !== id)))
   }
 

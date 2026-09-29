@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { apiFetch } from '../lib/api'
 
 const today = () => new Date().toISOString().split('T')[0]
 
@@ -17,14 +18,14 @@ export default function Inventory() {
   const [page, setPage] = useState(1)
 
   useEffect(() => {
-    Promise.all([fetch('/api/inventory').then(r => r.json()), fetch('/api/products').then(r => r.json())])
+    Promise.all([apiFetch('/api/inventory').then(r => r.json()), apiFetch('/api/products').then(r => r.json())])
       .then(([inv, prod]) => { setItems(inv); setProducts(prod); setLoading(false) })
   }, [])
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
-    const res = await fetch('/api/inventory', {
+    const res = await apiFetch('/api/inventory', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form),
@@ -38,7 +39,7 @@ export default function Inventory() {
 
   async function handleDelete(id) {
     if (!confirm('Delete this inventory item?')) return
-    const res = await fetch(`/api/inventory/${id}`, { method: 'DELETE' })
+    const res = await apiFetch(`/api/inventory/${id}`, { method: 'DELETE' })
     if (res.ok) setItems(prev => prev.filter(i => i.id !== id))
   }
 

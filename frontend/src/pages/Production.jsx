@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiFetch } from '../lib/api'
 
 const today = () => new Date().toISOString().split('T')[0]
 
@@ -31,7 +32,7 @@ export default function Production() {
   const [history, setHistory] = useState([])
 
   useEffect(() => {
-    fetch('/api/recipes').then(r => r.json()).then(setRecipes)
+    apiFetch('/api/recipes').then(r => r.json()).then(setRecipes)
     fetchHistory()
   }, [])
 
@@ -45,7 +46,7 @@ export default function Production() {
     setPreviewLoading(true)
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/production/preview?recipe_id=${selectedRecipeId}&batches=${batches}`)
+        const res = await apiFetch(`/api/production/preview?recipe_id=${selectedRecipeId}&batches=${batches}`)
         const data = await res.json()
         if (!res.ok) { setError(data.error); setPreview(null) }
         else { setPreview(data); setError('') }
@@ -59,7 +60,7 @@ export default function Production() {
   }, [selectedRecipeId, batches])
 
   async function fetchHistory() {
-    const data = await fetch('/api/production').then(r => r.json())
+    const data = await apiFetch('/api/production').then(r => r.json())
     setHistory(data)
   }
 
@@ -73,7 +74,7 @@ export default function Production() {
     setSubmitting(true)
     setError('')
     try {
-      const res = await fetch('/api/production', {
+      const res = await apiFetch('/api/production', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipe_id: selectedRecipeId, batches, date_produced: dateProduced }),

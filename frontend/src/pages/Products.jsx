@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiFetch } from '../lib/api'
 
 const UNIT_TYPES = ['kg', 'g', 'L', 'mL', 'oz', 'lb', 'cup', 'tbsp', 'tsp', 'piece', 'dozen', 'unit', 'box', 'bag', 'bottle']
 
@@ -9,7 +10,7 @@ export default function Products() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/products')
+    apiFetch('/api/products')
       .then(r => r.json())
       .then(data => { setProducts(data); setLoading(false) })
   }, [])
@@ -17,7 +18,7 @@ export default function Products() {
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
-    const res = await fetch('/api/products', {
+    const res = await apiFetch('/api/products', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form),
@@ -30,7 +31,7 @@ export default function Products() {
 
   async function handleDelete(id) {
     if (!confirm('Delete this product? This cannot be undone.')) return
-    const res = await fetch(`/api/products/${id}`, { method: 'DELETE' })
+    const res = await apiFetch(`/api/products/${id}`, { method: 'DELETE' })
     if (res.ok) setProducts(prev => prev.filter(p => p.id !== id))
     else {
       const data = await res.json()
