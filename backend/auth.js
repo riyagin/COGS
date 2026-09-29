@@ -8,12 +8,18 @@
 //   SUPABASE_URL         https://<project-ref>.supabase.co   (unset = auth off, local dev only)
 //   SUPABASE_JWT_SECRET  only for projects still on the legacy HS256 JWT secret
 //   ADMIN_EMAILS         comma-separated; these emails are created as admins on first sign-in
+//   AUTH_PROVIDERS       accepted sign-in providers, default "google"
 const db = require('./db');
 
 const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
 const ISSUER = `${SUPABASE_URL}/auth/v1`;
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '')
   .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+
+// Sign-in methods whose email we trust. Checked against app_metadata.providers, which only
+// Supabase can set (user_metadata is user-editable and must never drive authorization).
+const ALLOWED_PROVIDERS = (process.env.AUTH_PROVIDERS || 'google')
+  .split(',').map(p => p.trim().toLowerCase()).filter(Boolean);
 
 const ROLES = ['admin', 'staff', 'viewer'];
 const DEV_USER = { id: null, email: 'dev@localhost', name: 'Local dev', role: 'admin', dev: true };
@@ -80,6 +86,11 @@ async function authenticate(req, res, next) {
       claims = await verifyToken(match[1]);
     } catch {
       return res.status(401).json({ error: 'Session expired or invalid, please sign in again' });
+    }
+
+    const providers = claims.app_metadata?.providers || [claims.app_metadata?.provider];
+    if (!providers.some(p => ALLOWED_PROVIDERS.includes(p))) {
+      return res.status(403).json({ error: `Please sign in with ${ALLOWED_PROVIDERS.join(' or ')}`, code: 'no_access' });
     }
 
     const email = String(claims.email || '').toLowerCase();

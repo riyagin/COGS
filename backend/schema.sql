@@ -114,3 +114,44 @@ ALTER TABLE inventory_items   ADD COLUMN IF NOT EXISTS created_by INTEGER REFERE
 ALTER TABLE productions       ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id);
 ALTER TABLE invoices          ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id);
 ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id);
+
+-- ── Foreign-key indexes (Postgres does not create these automatically) ───────
+CREATE INDEX IF NOT EXISTS recipes_output_product_id_idx            ON recipes (output_product_id);
+CREATE INDEX IF NOT EXISTS recipe_items_recipe_id_idx               ON recipe_items (recipe_id);
+CREATE INDEX IF NOT EXISTS recipe_items_product_id_idx              ON recipe_items (product_id);
+CREATE INDEX IF NOT EXISTS productions_recipe_id_idx                ON productions (recipe_id);
+CREATE INDEX IF NOT EXISTS productions_created_by_idx               ON productions (created_by);
+CREATE INDEX IF NOT EXISTS inventory_items_product_id_idx           ON inventory_items (product_id);
+CREATE INDEX IF NOT EXISTS inventory_items_production_id_idx        ON inventory_items (production_id);
+CREATE INDEX IF NOT EXISTS inventory_items_created_by_idx           ON inventory_items (created_by);
+CREATE INDEX IF NOT EXISTS invoices_created_by_idx                  ON invoices (created_by);
+CREATE INDEX IF NOT EXISTS invoice_items_invoice_id_idx             ON invoice_items (invoice_id);
+CREATE INDEX IF NOT EXISTS invoice_items_product_id_idx             ON invoice_items (product_id);
+CREATE INDEX IF NOT EXISTS invoice_item_consumptions_item_idx       ON invoice_item_consumptions (invoice_item_id);
+CREATE INDEX IF NOT EXISTS invoice_item_consumptions_lot_idx        ON invoice_item_consumptions (inventory_item_id);
+CREATE INDEX IF NOT EXISTS stock_adjustments_product_id_idx         ON stock_adjustments (product_id);
+CREATE INDEX IF NOT EXISTS stock_adjustments_created_by_idx         ON stock_adjustments (created_by);
+
+-- ── Lock down Supabase's Data API ────────────────────────────────────────────
+-- All access goes through our backend, which connects as the table owner (RLS does
+-- not apply to owners). Supabase's auto-generated REST/GraphQL API would otherwise
+-- let anyone holding the public publishable key read these tables as `anon`.
+-- RLS with no policies denies everything to anon/authenticated; revoking the grants
+-- closes the tables entirely. The roles only exist on Supabase, not in local PGlite.
+DO $$
+DECLARE t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'products', 'recipes', 'recipe_items', 'productions', 'inventory_items',
+    'invoices', 'invoice_items', 'invoice_item_consumptions', 'stock_adjustments', 'users'
+  ] LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+      EXECUTE format('REVOKE ALL ON TABLE %I FROM anon, authenticated', t);
+    END IF;
+  END LOOP;
+
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;
+  END IF;
+END $$;
