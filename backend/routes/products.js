@@ -3,8 +3,25 @@ const router = express.Router();
 const db = require('../db');
 const { ah, isUniqueViolation } = require('../http');
 
+// Each product with its last known unit price: the most recent purchase, or for products
+// that are only ever produced, the most recent production run. Read from lot history,
+// so it survives stock being reset to zero and follows every new purchase.
 router.get('/', ah(async (req, res) => {
-  res.json(await db.query('SELECT * FROM products ORDER BY name'));
+  res.json(await db.query(`
+    SELECT p.*,
+           lp.unit_price       AS last_unit_price,
+           lp.date_of_purchase AS last_price_date,
+           lp.source           AS last_price_source
+    FROM products p
+    LEFT JOIN LATERAL (
+      SELECT i.price / i.amount AS unit_price, i.date_of_purchase, i.source
+      FROM inventory_items i
+      WHERE i.product_id = p.id AND i.amount > 0 AND i.source IN ('purchase', 'production')
+      ORDER BY (i.source = 'purchase') DESC, i.date_of_purchase DESC, i.created_at DESC, i.id DESC
+      LIMIT 1
+    ) lp ON true
+    ORDER BY p.name
+  `));
 }));
 
 router.post('/', ah(async (req, res) => {

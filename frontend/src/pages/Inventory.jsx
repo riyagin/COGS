@@ -34,6 +34,8 @@ export default function Inventory() {
     if (!res.ok) return setError(data.error)
     setItems(prev => [data, ...prev])
     setForm({ product_id: '', amount: '', price: '', date_of_purchase: today() })
+    // This purchase is now the product's last price
+    apiFetch('/api/products').then(r => r.json()).then(setProducts)
     setPage(1)
   }
 
@@ -48,6 +50,13 @@ export default function Inventory() {
     : null
 
   const selectedProduct = products.find(p => p.id === Number(form.product_id))
+
+  // Last known unit price for the selected product, shown as a hint in the price field
+  const lastUnit = selectedProduct?.last_unit_price ?? null
+  const suggestedTotal = lastUnit != null && Number(form.amount) > 0
+    ? Math.round(lastUnit * Number(form.amount))
+    : null
+  const priceChange = lastUnit && unitPrice ? (unitPrice - lastUnit) / lastUnit : null
 
   // Filter by search, then paginate
   const filtered = useMemo(() => {
@@ -109,18 +118,44 @@ export default function Inventory() {
                 type="number"
                 step="any"
                 min="0"
-                placeholder="0"
+                placeholder={
+                  suggestedTotal != null ? `${rp(suggestedTotal)} at last price`
+                    : lastUnit != null ? `Last: Rp ${num(lastUnit, 0)}/${selectedProduct.unit_type}`
+                    : '0'
+                }
                 value={form.price}
                 onChange={e => setForm({ ...form, price: e.target.value })}
                 className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
                 required
               />
               {unitPrice && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                <span className="pointer-events-none absolute right-9 top-1/2 -translate-y-1/2 text-xs text-gray-400">
                   Rp {Number(unitPrice).toLocaleString('id-ID')}/{selectedProduct?.unit_type}
                 </span>
               )}
             </div>
+            {lastUnit != null && (
+              <p className="mt-1 text-xs text-gray-500 flex flex-wrap items-center gap-x-2">
+                <span>
+                  Last {selectedProduct.last_price_source === 'purchase' ? 'price' : 'production cost'}:{' '}
+                  Rp {num(lastUnit, lastUnit < 100 ? 2 : 0)}/{selectedProduct.unit_type} · {selectedProduct.last_price_date}
+                </span>
+                {suggestedTotal != null && !form.price && (
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, price: String(suggestedTotal) })}
+                    className="font-medium text-indigo-600 hover:text-indigo-800"
+                  >
+                    Use last price
+                  </button>
+                )}
+                {priceChange != null && Math.abs(priceChange) >= 0.005 && (
+                  <span className={`font-medium ${priceChange > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {priceChange > 0 ? '▲' : '▼'} {Math.abs(priceChange * 100).toFixed(1)}% vs last
+                  </span>
+                )}
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Date of Purchase</label>

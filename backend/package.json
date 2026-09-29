@@ -8,7 +8,9 @@
     "dev": "nodemon --ignore .pgdata server.js",
     "db:migrate": "node scripts/migrate.js",
     "db:import-sqlite": "node scripts/import-sqlite.js",
-    "user:create": "node scripts/create-user.js"
+    "user:create": "node scripts/create-user.js",
+    "db:backup": "node scripts/backup.js",
+    "stock:reset": "node scripts/reset-stock.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -46,3 +46,6 @@ backend/.env
 
 # ── Unrelated project folder (contains a >100MB binary) ──────────────────────
 kafe sebelah klinik/
+
+# Local data backups (npm run db:backup)
+backend/backups/
