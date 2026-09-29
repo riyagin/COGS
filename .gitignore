@@ -49,3 +49,6 @@ kafe sebelah klinik/
 
 # Local data backups (npm run db:backup)
 backend/backups/
+
+# Built app packages handed out to phones
+release/
