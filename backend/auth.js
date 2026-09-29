@@ -1,105 +1,85 @@
 // Authentication and authorization for /api.
 //
-// The frontend signs in with Google through Supabase Auth and sends the Supabase access
-// token as `Authorization: Bearer <jwt>`. We verify the token, then look the email up in
-// our own `users` allowlist, which decides access and role.
+// Users sign in with username + password (routes/auth.js) and receive a signed session
+// token, sent back as `Authorization: Bearer <token>`. Every request re-reads the user,
+// so deactivating someone or resetting their password (which bumps token_version)
+// ends their sessions immediately.
 //
 // Env:
-//   SUPABASE_URL         https://<project-ref>.supabase.co   (unset = auth off, local dev only)
-//   SUPABASE_JWT_SECRET  only for projects still on the legacy HS256 JWT secret
-//   ADMIN_EMAILS         comma-separated; these emails are created as admins on first sign-in
-//   AUTH_PROVIDERS       accepted sign-in providers, default "google"
+//   AUTH_SECRET  random string, 32+ chars, signs session tokens.
+//                Unset = sign-in off (local dev only; deployments refuse to run).
 const db = require('./db');
 
-const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
-const ISSUER = `${SUPABASE_URL}/auth/v1`;
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '')
-  .split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
-
-// Sign-in methods whose email we trust. Checked against app_metadata.providers, which only
-// Supabase can set (user_metadata is user-editable and must never drive authorization).
-const ALLOWED_PROVIDERS = (process.env.AUTH_PROVIDERS || 'google')
-  .split(',').map(p => p.trim().toLowerCase()).filter(Boolean);
+const SECRET = process.env.AUTH_SECRET || '';
+const ISSUER = 'cogs';
+const TOKEN_TTL = '14d';
 
 const ROLES = ['admin', 'staff', 'viewer'];
-const DEV_USER = { id: null, email: 'dev@localhost', name: 'Local dev', role: 'admin', dev: true };
+const DEV_USER = { id: null, username: 'dev', name: 'Local dev', role: 'admin', dev: true, must_change_password: false };
 
-let jwks = null;
+// Requests allowed while the user still has to replace a temporary password
+const ALLOWED_BEFORE_PASSWORD_CHANGE = ['/me', '/auth/change-password'];
 
-async function verifyToken(token) {
-  const { jwtVerify, createRemoteJWKSet, decodeProtectedHeader } = await import('jose');
-  const opts = { issuer: ISSUER, audience: 'authenticated' };
+const authEnabled = !!SECRET;
+const secretKey = () => new TextEncoder().encode(SECRET);
 
-  if (decodeProtectedHeader(token).alg === 'HS256') {
-    if (!process.env.SUPABASE_JWT_SECRET) throw new Error('HS256 token but SUPABASE_JWT_SECRET is not set');
-    const secret = new TextEncoder().encode(process.env.SUPABASE_JWT_SECRET);
-    return (await jwtVerify(token, secret, opts)).payload;
+function configProblem() {
+  if (!SECRET) {
+    return (process.env.VERCEL || process.env.NODE_ENV === 'production')
+      ? 'Sign-in is not configured (AUTH_SECRET missing)'
+      : null;
   }
-
-  // Asymmetric signing keys (current Supabase default), cached and refreshed by jose
-  jwks ??= createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks.json`));
-  return (await jwtVerify(token, jwks, opts)).payload;
+  return SECRET.length < 32 ? 'AUTH_SECRET must be at least 32 characters' : null;
 }
 
-async function findOrBootstrapUser(email, claims) {
-  let user = await db.one('SELECT * FROM users WHERE email = $1', [email]);
-  if (!user && ADMIN_EMAILS.includes(email)) {
-    user = await db.one(`
-      INSERT INTO users (email, name, role) VALUES ($1, $2, 'admin')
-      ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
-      RETURNING *
-    `, [email, claims.user_metadata?.full_name || null]);
-  }
-  if (!user) return null;
+async function signToken(user) {
+  const { SignJWT } = await import('jose');
+  return new SignJWT({ ver: user.token_version })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setSubject(String(user.id))
+    .setIssuer(ISSUER)
+    .setIssuedAt()
+    .setExpirationTime(TOKEN_TTL)
+    .sign(secretKey());
+}
 
-  // Record sign-in details, at most every few minutes so each request isn't a write
-  if (!user.last_login_at || Date.now() - new Date(user.last_login_at).getTime() > 5 * 60_000) {
-    user = await db.one(`
-      UPDATE users
-      SET last_login_at = now(),
-          auth_user_id = COALESCE(auth_user_id, $2),
-          name = COALESCE(name, $3)
-      WHERE id = $1
-      RETURNING *
-    `, [user.id, claims.sub, claims.user_metadata?.full_name || null]);
+async function userFromToken(token) {
+  const { jwtVerify } = await import('jose');
+  let payload;
+  try {
+    ({ payload } = await jwtVerify(token, secretKey(), { issuer: ISSUER, algorithms: ['HS256'] }));
+  } catch {
+    return null;
   }
+  const user = await db.one('SELECT * FROM users WHERE id = $1', [Number(payload.sub)]);
+  if (!user || !user.active || user.token_version !== payload.ver) return null;
   return user;
 }
 
-// Attaches req.user or rejects with 401 (not signed in) / 403 (not on the allowlist).
+// Fields safe to send to the browser
+function publicUser(u) {
+  const { id, username, name, role, must_change_password, dev } = u;
+  return { id, username, name, role, must_change_password: !!must_change_password, dev: !!dev };
+}
+
+// Attaches req.user or rejects with 401 (not signed in / session ended).
 async function authenticate(req, res, next) {
   try {
-    if (!SUPABASE_URL) {
-      // Never run open on a deployment; fail closed if auth was forgotten there
-      if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
-        return res.status(500).json({ error: 'Authentication is not configured (SUPABASE_URL missing)' });
-      }
+    const problem = configProblem();
+    if (problem) return res.status(500).json({ error: problem });
+    if (!authEnabled) {
       req.user = DEV_USER;
       return next();
     }
 
     const match = /^Bearer (.+)$/.exec(req.headers.authorization || '');
-    if (!match) return res.status(401).json({ error: 'Not signed in' });
-
-    let claims;
-    try {
-      claims = await verifyToken(match[1]);
-    } catch {
-      return res.status(401).json({ error: 'Session expired or invalid, please sign in again' });
-    }
-
-    const providers = claims.app_metadata?.providers || [claims.app_metadata?.provider];
-    if (!providers.some(p => ALLOWED_PROVIDERS.includes(p))) {
-      return res.status(403).json({ error: `Please sign in with ${ALLOWED_PROVIDERS.join(' or ')}`, code: 'no_access' });
-    }
-
-    const email = String(claims.email || '').toLowerCase();
-    const user = email && await findOrBootstrapUser(email, claims);
-    if (!user || !user.active) {
-      return res.status(403).json({ error: `${email || 'This account'} does not have access. Ask an admin to add you.`, code: 'no_access' });
-    }
+    const user = match && await userFromToken(match[1]);
+    if (!user) return res.status(401).json({ error: 'Please sign in', code: 'signed_out' });
 
     req.user = user;
+    if (user.must_change_password && !ALLOWED_BEFORE_PASSWORD_CHANGE.includes(req.path)) {
+      return res.status(403).json({ error: 'Please choose a new password first', code: 'must_change_password' });
+    }
     next();
   } catch (err) {
     next(err);
@@ -117,4 +97,7 @@ function requireAdmin(req, res, next) {
   res.status(403).json({ error: 'Admins only' });
 }
 
-module.exports = { authenticate, requireWriteAccess, requireAdmin, ROLES, authEnabled: !!SUPABASE_URL };
+module.exports = {
+  authenticate, requireWriteAccess, requireAdmin, signToken, publicUser, configProblem,
+  ROLES, authEnabled,
+};

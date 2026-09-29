@@ -1,20 +1,22 @@
 const express = require('express');
 const cors = require('cors');
 const { errorHandler } = require('./http');
-const { authenticate, requireWriteAccess, requireAdmin, authEnabled } = require('./auth');
+const { authenticate, requireWriteAccess, requireAdmin, publicUser } = require('./auth');
+const { login, changePassword } = require('./routes/auth');
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// Everything under /api requires a signed-in, allowlisted user
+// Public
+app.post('/api/auth/login', login);
+
+// Everything else under /api requires a signed-in user
 app.use('/api', authenticate);
 
-app.get('/api/me', (req, res) => {
-  const { id, email, name, role, dev } = req.user;
-  res.json({ id, email, name, role, dev: !!dev, auth_enabled: authEnabled });
-});
+app.get('/api/me', (req, res) => res.json(publicUser(req.user)));
+app.post('/api/auth/change-password', changePassword);
 app.use('/api/users', requireAdmin, require('./routes/users'));
 
 app.use('/api', requireWriteAccess);

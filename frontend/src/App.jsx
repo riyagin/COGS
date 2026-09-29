@@ -7,6 +7,7 @@ import Invoices from './pages/Invoices'
 import StockAdjust from './pages/StockAdjust'
 import StockOpname from './pages/StockOpname'
 import Users from './pages/Users'
+import Account from './pages/Account'
 import AuthGate, { useMe, signOut } from './auth/AuthGate'
 
 const NAV = [
@@ -48,18 +49,31 @@ function Sidebar() {
         ))}
       </nav>
       <div className="px-4 py-4 border-t border-white/50">
-        <p className="text-sm font-medium text-gray-800 truncate" title={me.email}>{me.name || me.email}</p>
-        <div className="flex items-center justify-between mt-0.5">
-          <span className="text-xs text-gray-500">{me.dev ? 'Local dev (no sign-in)' : me.role[0].toUpperCase() + me.role.slice(1)}</span>
-          {!me.dev && (
-            <button onClick={signOut} className="text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors">
+        {me.dev ? (
+          <>
+            <p className="text-sm font-medium text-gray-800">Local dev</p>
+            <p className="text-xs text-gray-500 mt-0.5">Sign-in off (no AUTH_SECRET)</p>
+          </>
+        ) : (
+          <>
+            <NavLink to="/account" className="block group" title="Account and password">
+              <p className="text-sm font-medium text-gray-800 truncate group-hover:text-indigo-700">{me.name || me.username}</p>
+              <p className="text-xs text-gray-500 truncate">@{me.username} · {me.role[0].toUpperCase() + me.role.slice(1)}</p>
+            </NavLink>
+            <button onClick={signOut} className="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors">
               Sign out
             </button>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </aside>
   )
+}
+
+// Non-admins who land on an admin page (e.g. an old URL after switching accounts) go home
+function AdminOnly({ children }) {
+  const me = useMe()
+  return me.role === 'admin' ? children : <Navigate to="/products" replace />
 }
 
 export default function App() {
@@ -79,7 +93,8 @@ export default function App() {
                 <Route path="/invoices" element={<Invoices />} />
                 <Route path="/stock-adjust" element={<StockAdjust />} />
                 <Route path="/stock-opname" element={<StockOpname />} />
-                <Route path="/users" element={<Users />} />
+                <Route path="/users" element={<AdminOnly><Users /></AdminOnly>} />
+                <Route path="/account" element={<Account />} />
               </Routes>
             </div>
           </main>

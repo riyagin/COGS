@@ -96,17 +96,22 @@ CREATE TABLE IF NOT EXISTS stock_adjustments (
 );
 
 -- ── Users & access ───────────────────────────────────────────────────────────
--- Allowlist of people who may sign in (Google via Supabase Auth), matched by email.
+-- Username + password accounts, created by an admin (see backend/auth.js).
 -- role: 'admin' (manage users + everything), 'staff' (read/write), 'viewer' (read-only)
 CREATE TABLE IF NOT EXISTS users (
-  id             SERIAL PRIMARY KEY,
-  email          TEXT NOT NULL UNIQUE,
-  name           TEXT,
-  role           TEXT NOT NULL DEFAULT 'staff' CHECK (role IN ('admin', 'staff', 'viewer')),
-  active         BOOLEAN NOT NULL DEFAULT true,
-  auth_user_id   UUID UNIQUE,
-  last_login_at  TIMESTAMPTZ,
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  id                    SERIAL PRIMARY KEY,
+  username              TEXT NOT NULL UNIQUE CHECK (username ~ '^[a-z0-9][a-z0-9._-]{2,31}$'),
+  name                  TEXT,
+  role                  TEXT NOT NULL DEFAULT 'staff' CHECK (role IN ('admin', 'staff', 'viewer')),
+  password_hash         TEXT NOT NULL,
+  must_change_password  BOOLEAN NOT NULL DEFAULT true,
+  -- Bumped on password change/reset/deactivation; invalidates all issued session tokens
+  token_version         INTEGER NOT NULL DEFAULT 0,
+  failed_logins         INTEGER NOT NULL DEFAULT 0,
+  locked_until          TIMESTAMPTZ,
+  active                BOOLEAN NOT NULL DEFAULT true,
+  last_login_at         TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Who recorded each movement (NULL for rows created before sign-in existed)

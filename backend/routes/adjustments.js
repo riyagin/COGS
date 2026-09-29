@@ -7,7 +7,7 @@ const { lockProducts, consumeFifo } = require('../fifo');
 // GET adjustment history (most recent first)
 router.get('/', ah(async (req, res) => {
   res.json(await db.query(`
-    SELECT a.*, p.name AS product_name, p.unit_type, COALESCE(u.name, u.email) AS created_by_name
+    SELECT a.*, p.name AS product_name, p.unit_type, COALESCE(u.name, u.username) AS created_by_name
     FROM stock_adjustments a
     JOIN products p ON a.product_id = p.id
     LEFT JOIN users u ON u.id = a.created_by
@@ -73,7 +73,7 @@ router.post('/', ah(async (req, res) => {
   });
 
   res.status(201).json(await db.one(`
-    SELECT a.*, p.name AS product_name, p.unit_type, COALESCE(u.name, u.email) AS created_by_name
+    SELECT a.*, p.name AS product_name, p.unit_type, COALESCE(u.name, u.username) AS created_by_name
     FROM stock_adjustments a
     JOIN products p ON a.product_id = p.id
     LEFT JOIN users u ON u.id = a.created_by

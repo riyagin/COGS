@@ -9,7 +9,7 @@ const LOT_SELECT = `
     p.name AS product_name,
     p.unit_type,
     ROUND((i.price / i.amount)::numeric, 6)::float8 AS unit_price,
-    COALESCE(u.name, u.email) AS created_by_name
+    COALESCE(u.name, u.username) AS created_by_name
   FROM inventory_items i
   JOIN products p ON i.product_id = p.id
   LEFT JOIN users u ON u.id = i.created_by

@@ -7,7 +7,7 @@ const { lockProducts, consumeFifo } = require('../fifo');
 // GET /api/invoices — list all invoices with their items
 router.get('/', ah(async (req, res) => {
   const invoices = await db.query(`
-    SELECT inv.*, COALESCE(u.name, u.email) AS created_by_name
+    SELECT inv.*, COALESCE(u.name, u.username) AS created_by_name
     FROM invoices inv
     LEFT JOIN users u ON u.id = inv.created_by
     ORDER BY inv.created_at DESC, inv.id DESC

@@ -6,7 +6,7 @@ const { lockProducts, consumeFifo } = require('../fifo');
 
 const PRODUCTION_SELECT = `
   SELECT pr.*, r.name AS recipe_name, p.name AS output_product_name, p.unit_type,
-         COALESCE(u.name, u.email) AS created_by_name
+         COALESCE(u.name, u.username) AS created_by_name
   FROM productions pr
   JOIN recipes r ON pr.recipe_id = r.id
   JOIN products p ON r.output_product_id = p.id
