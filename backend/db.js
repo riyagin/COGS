@@ -55,7 +55,9 @@ async function createPgBackend(url) {
 }
 
 async function createPgliteBackend(dir) {
-  const { PGlite } = await import('@electric-sql/pglite');
+  // Non-literal specifier: keeps Vercel's bundler from tracing this dev-only dependency
+  const pgliteModule = '@electric-sql/pglite';
+  const { PGlite } = await import(pgliteModule);
   const pg = new PGlite(dir);
   await pg.exec(SCHEMA);
 
