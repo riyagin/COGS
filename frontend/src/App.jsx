@@ -1,25 +1,31 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
+import Items from './pages/Items'
 import Products from './pages/Products'
-import Inventory from './pages/Inventory'
+import Purchasing from './pages/Purchasing'
+import Stock from './pages/Stock'
 import Recipes from './pages/Recipes'
 import Production from './pages/Production'
 import Invoices from './pages/Invoices'
 import StockAdjust from './pages/StockAdjust'
 import StockOpname from './pages/StockOpname'
+import Accounting from './pages/Accounting'
 import Users from './pages/Users'
 import Account from './pages/Account'
 import AuthGate, { useMe, signOut } from './auth/AuthGate'
 
 const NAV = [
-  { to: '/products', label: 'Products' },
-  { to: '/inventory', label: 'Inventory' },
-  { to: '/recipes', label: 'Recipes' },
-  { to: '/production', label: 'Production' },
-  { to: '/invoices', label: 'Invoices' },
-  { to: '/stock-adjust', label: 'Stock Adjust' },
-  { to: '/stock-opname', label: 'Stock Opname' },
-  { to: '/users', label: 'Users', adminOnly: true },
+  { to: '/purchasing', label: 'Purchasing', group: 'Inventory' },
+  { to: '/stock', label: 'Stock', group: 'Inventory' },
+  { to: '/items', label: 'Items', group: 'Inventory' },
+  { to: '/stock-adjust', label: 'Stock Adjust', group: 'Inventory' },
+  { to: '/stock-opname', label: 'Stock Opname', group: 'Inventory' },
+  { to: '/recipes', label: 'Recipes', group: 'Kitchen' },
+  { to: '/production', label: 'Production', group: 'Kitchen' },
+  { to: '/products', label: 'Products', group: 'Sales' },
+  { to: '/invoices', label: 'Invoices', group: 'Sales' },
+  { to: '/accounting', label: 'Accounting', group: 'Books' },
+  { to: '/users', label: 'Users', group: 'Admin', adminOnly: true },
 ]
 
 function Brand() {
@@ -49,7 +55,11 @@ function SidebarContent({ onClose }) {
         )}
       </div>
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {NAV.filter(n => !n.adminOnly || me.role === 'admin').map(({ to, label }) => (
+        {NAV.filter(n => !n.adminOnly || me.role === 'admin').map(({ to, label, group }, i, list) => (
+          <div key={to}>
+          {group !== list[i - 1]?.group && (
+            <p className={`px-3 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-widest ${i > 0 ? 'pt-3' : ''}`}>{group}</p>
+          )}
           <NavLink
             key={to}
             to={to}
@@ -63,6 +73,7 @@ function SidebarContent({ onClose }) {
           >
             {label}
           </NavLink>
+          </div>
         ))}
       </nav>
       <div className="px-4 py-4 border-t border-white/50">
@@ -96,9 +107,9 @@ function Shell({ children }) {
   useEffect(() => setMenuOpen(false), [location.pathname])
 
   return (
-    <div className="flex h-dvh overflow-hidden safe-area">
+    <div className="flex h-dvh overflow-hidden safe-area print:block print:h-auto print:overflow-visible">
       {/* Desktop: fixed glass column */}
-      <aside className="hidden md:flex glass-panel w-56 shrink-0 m-4 mr-0 rounded-2xl flex-col overflow-hidden">
+      <aside className="hidden md:flex print:!hidden glass-panel w-56 shrink-0 m-4 mr-0 rounded-2xl flex-col overflow-hidden">
         <SidebarContent />
       </aside>
 
@@ -118,7 +129,7 @@ function Shell({ children }) {
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Phones: top bar */}
-        <header className="md:hidden glass-panel mx-3 mt-3 rounded-2xl px-3 py-2.5 flex items-center gap-3">
+        <header className="md:hidden print:hidden glass-panel mx-3 mt-3 rounded-2xl px-3 py-2.5 flex items-center gap-3">
           <button onClick={() => setMenuOpen(true)} className="p-1.5 -ml-0.5 rounded-lg text-gray-700 hover:bg-white/60" aria-label="Open menu">
             <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M4 7h16M4 12h16M4 17h16" />
@@ -128,7 +139,7 @@ function Shell({ children }) {
           <span className="text-sm font-semibold text-gray-800 truncate">{current}</span>
         </header>
 
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto print:overflow-visible">
           <div className="p-3 pt-4 sm:p-6 md:p-8">{children}</div>
         </main>
       </div>
@@ -139,7 +150,7 @@ function Shell({ children }) {
 // Non-admins who land on an admin page (e.g. an old URL after switching accounts) go home
 function AdminOnly({ children }) {
   const me = useMe()
-  return me.role === 'admin' ? children : <Navigate to="/products" replace />
+  return me.role === 'admin' ? children : <Navigate to="/stock" replace />
 }
 
 export default function App() {
@@ -148,17 +159,21 @@ export default function App() {
       <AuthGate>
         <Shell>
           <Routes>
-            <Route path="/" element={<Navigate to="/products" replace />} />
+            <Route path="/" element={<Navigate to="/stock" replace />} />
+            <Route path="/purchasing" element={<Purchasing />} />
+            <Route path="/stock" element={<Stock />} />
+            <Route path="/inventory" element={<Navigate to="/stock" replace />} />
+            <Route path="/items" element={<Items />} />
             <Route path="/products" element={<Products />} />
-            <Route path="/inventory" element={<Inventory />} />
             <Route path="/recipes" element={<Recipes />} />
             <Route path="/production" element={<Production />} />
             <Route path="/invoices" element={<Invoices />} />
             <Route path="/stock-adjust" element={<StockAdjust />} />
             <Route path="/stock-opname" element={<StockOpname />} />
+            <Route path="/accounting" element={<Accounting />} />
             <Route path="/users" element={<AdminOnly><Users /></AdminOnly>} />
             <Route path="/account" element={<Account />} />
-            <Route path="*" element={<Navigate to="/products" replace />} />
+            <Route path="*" element={<Navigate to="/stock" replace />} />
           </Routes>
         </Shell>
       </AuthGate>

@@ -7,7 +7,6 @@
     "start": "node server.js",
     "dev": "nodemon --ignore .pgdata server.js",
     "db:migrate": "node scripts/migrate.js",
-    "db:import-sqlite": "node scripts/import-sqlite.js",
     "user:create": "node scripts/create-user.js",
     "db:backup": "node scripts/backup.js",
     "stock:reset": "node scripts/reset-stock.js"
@@ -21,7 +20,6 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
-    "better-sqlite3": "^11.7.0",
     "nodemon": "^3.0.3"
   },
   "engines": {

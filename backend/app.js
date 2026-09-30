@@ -20,12 +20,15 @@ app.post('/api/auth/change-password', changePassword);
 app.use('/api/users', requireAdmin, require('./routes/users'));
 
 app.use('/api', requireWriteAccess);
+app.use('/api/items', require('./routes/items'));
 app.use('/api/products', require('./routes/products'));
+app.use('/api/purchases', require('./routes/purchases'));
 app.use('/api/inventory', require('./routes/inventory'));
 app.use('/api/recipes', require('./routes/recipes'));
 app.use('/api/production', require('./routes/production'));
 app.use('/api/invoices', require('./routes/invoices'));
 app.use('/api/adjustments', require('./routes/adjustments'));
+app.use('/api/accounting', require('./routes/accounting'));
 
 app.use(errorHandler);
 

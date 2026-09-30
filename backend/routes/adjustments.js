@@ -1,41 +1,87 @@
+// Stock corrections. Manual adjustments add or remove a quantity; opname sets stock to a
+// physical count. Either way the difference is booked to "Inventory adjustments & waste":
+// removed stock at its FIFO cost, found stock at the given or last known unit cost.
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { ah, HttpError } = require('../http');
-const { lockProducts, consumeFifo } = require('../fifo');
+const { lockItems, consumeFifo, fallbackUnitCost } = require('../fifo');
+const ledger = require('../ledger');
+
+const ADJUSTMENT_SELECT = `
+  SELECT a.*, i.name AS item_name, i.unit_type, i.tier, COALESCE(u.name, u.username) AS created_by_name
+  FROM stock_adjustments a
+  JOIN items i ON a.item_id = i.id
+  LEFT JOIN users u ON u.id = a.created_by
+`;
 
 // GET adjustment history (most recent first)
 router.get('/', ah(async (req, res) => {
+  res.json(await db.query(`${ADJUSTMENT_SELECT} ORDER BY a.date DESC, a.created_at DESC, a.id DESC LIMIT 200`));
+}));
+
+// GET current stock for all items
+router.get('/stock', ah(async (req, res) => {
   res.json(await db.query(`
-    SELECT a.*, p.name AS product_name, p.unit_type, COALESCE(u.name, u.username) AS created_by_name
-    FROM stock_adjustments a
-    JOIN products p ON a.product_id = p.id
-    LEFT JOIN users u ON u.id = a.created_by
-    ORDER BY a.date DESC, a.created_at DESC, a.id DESC
-    LIMIT 200
+    SELECT i.id, i.name, i.unit_type, i.tier, COALESCE(SUM(l.remaining), 0) AS total_remaining
+    FROM items i
+    LEFT JOIN inventory_items l ON i.id = l.item_id AND l.remaining > 0
+    GROUP BY i.id, i.name, i.unit_type, i.tier
+    ORDER BY CASE i.tier WHEN 'raw' THEN 0 WHEN 'preprocessed' THEN 1 ELSE 2 END, i.name
   `));
 }));
 
-// GET current stock for all products
-router.get('/stock', ah(async (req, res) => {
-  res.json(await db.query(`
-    SELECT
-      p.id,
-      p.name,
-      p.unit_type,
-      COALESCE(SUM(i.remaining), 0) AS total_remaining
-    FROM products p
-    LEFT JOIN inventory_items i ON p.id = i.product_id AND i.remaining > 0
-    GROUP BY p.id, p.name, p.unit_type
-    ORDER BY p.name
-  `));
-}));
+// Move `delta` of an item in or out of stock and book it. Caller holds the item lock.
+// Returns the adjustment id.
+async function applyDelta(t, { item, delta, unitPrice, date, note, type, userId }) {
+  let value;
+  if (delta > 0) {
+    const price = unitPrice ?? await fallbackUnitCost(t, item.id);
+    value = price * delta;
+    await t.query(`
+      INSERT INTO inventory_items (item_id, amount, remaining, price, date_of_purchase, source, note, created_by)
+      VALUES ($1, $2, $2, $3, $4, $5, $6, $7)
+    `, [item.id, delta, value, date, type === 'opname' ? 'opname' : 'adjustment', note, userId]);
+  } else {
+    const { ok, available, cost } = await consumeFifo(t, item.id, -delta);
+    if (!ok) {
+      throw new HttpError(400, `Insufficient stock. Need ${-delta}, have ${available.toFixed(4)} ${item.unit_type}`);
+    }
+    value = -cost;
+  }
+
+  const { id } = await t.one(`
+    INSERT INTO stock_adjustments (item_id, quantity, note, date, type, created_by)
+    VALUES ($1, $2, $3, $4, $5, $6) RETURNING id
+  `, [item.id, delta, note, date, type, userId]);
+
+  // value > 0: stock found (a gain), value < 0: stock lost
+  await ledger.post(t, {
+    date,
+    memo: `${type === 'opname' ? 'Stock count' : 'Stock adjustment'}: ${item.name} ${delta > 0 ? '+' : ''}${delta} ${item.unit_type}${note ? ` (${note})` : ''}`,
+    source_type: 'adjustment',
+    source_id: id,
+    created_by: userId,
+    lines: [
+      { account: ledger.inventoryAccount(item.tier), debit: Math.max(value, 0), credit: Math.max(-value, 0) },
+      { account: 'inventory_adjustments', debit: Math.max(-value, 0), credit: Math.max(value, 0) },
+    ],
+  });
+  return id;
+}
+
+function optionalPrice(v) {
+  if (v === undefined || v === null || v === '') return null;
+  const n = parseFloat(v);
+  if (isNaN(n) || n < 0) throw new HttpError(400, 'unit_price must be zero or more');
+  return n;
+}
 
 // POST apply a manual adjustment
 router.post('/', ah(async (req, res) => {
-  const { product_id, quantity, note, date } = req.body;
-  if (!product_id || quantity === undefined || quantity === null || !date) {
-    return res.status(400).json({ error: 'product_id, quantity, and date are required' });
+  const { item_id, quantity, note, date } = req.body;
+  if (!item_id || quantity === undefined || quantity === null || !date) {
+    return res.status(400).json({ error: 'item_id, quantity, and date are required' });
   }
 
   const qty = parseFloat(quantity);
@@ -43,49 +89,25 @@ router.post('/', ah(async (req, res) => {
     return res.status(400).json({ error: 'quantity must be a non-zero number' });
   }
 
-  const product = await db.one('SELECT * FROM products WHERE id = $1', [product_id]);
-  if (!product) return res.status(404).json({ error: 'Product not found' });
+  const item = await db.one('SELECT * FROM items WHERE id = $1', [item_id]);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
 
   const adjustmentId = await db.tx(async t => {
-    if (qty > 0) {
-      // Positive adjustment: add a zero-cost inventory entry
-      await t.query(`
-        INSERT INTO inventory_items (product_id, amount, remaining, price, date_of_purchase, source, note, created_by)
-        VALUES ($1, $2, $2, 0, $3, 'adjustment', $4, $5)
-      `, [product_id, qty, date, note || null, req.user.id]);
-    } else {
-      // Negative adjustment: FIFO consume from existing inventory
-      const absQty = Math.abs(qty);
-      await lockProducts(t, [product_id]);
-      const { ok, available } = await consumeFifo(t, product_id, absQty);
-      if (!ok) {
-        throw new HttpError(400,
-          `Insufficient stock. Need ${absQty}, have ${available.toFixed(4)} ${product.unit_type}`);
-      }
-    }
-
-    const { id } = await t.one(`
-      INSERT INTO stock_adjustments (product_id, quantity, note, date, created_by)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id
-    `, [product_id, qty, note || null, date, req.user.id]);
-    return id;
+    await lockItems(t, [item.id]);
+    return applyDelta(t, {
+      item, delta: qty, unitPrice: optionalPrice(req.body.unit_price),
+      date, note: note || null, type: 'manual', userId: req.user.id,
+    });
   });
 
-  res.status(201).json(await db.one(`
-    SELECT a.*, p.name AS product_name, p.unit_type, COALESCE(u.name, u.username) AS created_by_name
-    FROM stock_adjustments a
-    JOIN products p ON a.product_id = p.id
-    LEFT JOIN users u ON u.id = a.created_by
-    WHERE a.id = $1
-  `, [adjustmentId]));
+  res.status(201).json(await db.one(`${ADJUSTMENT_SELECT} WHERE a.id = $1`, [adjustmentId]));
 }));
 
 // POST apply a stock opname (physical count) — overwrites stock to the counted amount
 router.post('/opname', ah(async (req, res) => {
-  const { product_id, counted_quantity, date, note, unit_price } = req.body;
-  if (!product_id || counted_quantity === undefined || counted_quantity === null || !date) {
-    return res.status(400).json({ error: 'product_id, counted_quantity, and date are required' });
+  const { item_id, counted_quantity, date, note } = req.body;
+  if (!item_id || counted_quantity === undefined || counted_quantity === null || !date) {
+    return res.status(400).json({ error: 'item_id, counted_quantity, and date are required' });
   }
 
   const counted = parseFloat(counted_quantity);
@@ -93,56 +115,30 @@ router.post('/opname', ah(async (req, res) => {
     return res.status(400).json({ error: 'counted_quantity must be a non-negative number' });
   }
 
-  const product = await db.one('SELECT * FROM products WHERE id = $1', [product_id]);
-  if (!product) return res.status(404).json({ error: 'Product not found' });
+  const item = await db.one('SELECT * FROM items WHERE id = $1', [item_id]);
+  if (!item) return res.status(404).json({ error: 'Item not found' });
 
   const opnameNote = note || `Stock opname: set to ${counted}`;
+  const unitPrice = optionalPrice(req.body.unit_price);
 
   const result = await db.tx(async t => {
     // Lock before reading the total so the delta can't go stale under concurrent writes
-    await lockProducts(t, [product_id]);
+    await lockItems(t, [item.id]);
 
     const { total_remaining } = await t.one(`
       SELECT COALESCE(SUM(remaining), 0) AS total_remaining
-      FROM inventory_items WHERE product_id = $1
-    `, [product_id]);
+      FROM inventory_items WHERE item_id = $1
+    `, [item.id]);
 
     const delta = counted - total_remaining;
     if (Math.abs(delta) < 0.0001) return { total_remaining, delta: 0 };
 
-    if (delta > 0) {
-      // Use an explicit price if given, otherwise fall back to this product's
-      // historical weighted-average unit price so costing stays accurate.
-      let price;
-      if (unit_price !== undefined && unit_price !== null && unit_price !== '') {
-        price = parseFloat(unit_price);
-      } else {
-        const hist = await t.one(`
-          SELECT SUM(price) AS total_price, SUM(amount) AS total_amount
-          FROM inventory_items WHERE product_id = $1 AND amount > 0
-        `, [product_id]);
-        price = hist.total_amount > 0 ? hist.total_price / hist.total_amount : 0;
-      }
-
-      await t.query(`
-        INSERT INTO inventory_items (product_id, amount, remaining, price, date_of_purchase, source, note, created_by)
-        VALUES ($1, $2, $2, $3, $4, 'opname', $5, $6)
-      `, [product_id, delta, price * delta, date, opnameNote, req.user.id]);
-    } else {
-      // Negative delta can never exceed total_remaining, so this always succeeds
-      await consumeFifo(t, product_id, Math.abs(delta));
-    }
-
-    await t.query(`
-      INSERT INTO stock_adjustments (product_id, quantity, note, date, type, created_by)
-      VALUES ($1, $2, $3, $4, 'opname', $5)
-    `, [product_id, delta, opnameNote, date, req.user.id]);
-
+    await applyDelta(t, { item, delta, unitPrice, date, note: opnameNote, type: 'opname', userId: req.user.id });
     return { total_remaining, delta };
   });
 
   const body = {
-    product_id, product_name: product.name, unit_type: product.unit_type,
+    item_id: item.id, item_name: item.name, unit_type: item.unit_type,
     previous_quantity: result.total_remaining, counted_quantity: counted, delta: result.delta,
   };
   if (result.delta === 0) {

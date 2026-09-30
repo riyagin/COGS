@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { apiFetch } from '../lib/api'
 
-const today = () => new Date().toISOString().split('T')[0]
+import { today } from '../lib/format'
 const num = (n, d = 2) => Number(n).toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d })
 
 export default function StockAdjust() {
   const [stock, setStock] = useState([])
   const [history, setHistory] = useState([])
-  const [form, setForm] = useState({ product_id: '', quantity: '', note: '', date: today() })
+  const [form, setForm] = useState({ item_id: '', quantity: '', note: '', date: today() })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(true)
@@ -41,21 +41,21 @@ export default function StockAdjust() {
 
     const qty = parseFloat(form.quantity)
     setSuccess(
-      `Adjusted ${data.product_name}: ${qty > 0 ? '+' : ''}${num(qty, 2)} ${data.unit_type}` +
+      `Adjusted ${data.item_name}: ${qty > 0 ? '+' : ''}${num(qty, 2)} ${data.unit_type}` +
       (form.note ? ` — "${form.note}"` : '')
     )
-    setForm({ product_id: '', quantity: '', note: '', date: today() })
+    setForm({ item_id: '', quantity: '', note: '', date: today() })
     fetchAll()
   }
 
-  const selectedProduct = stock.find(p => p.id === Number(form.product_id))
+  const selectedItem = stock.find(p => p.id === Number(form.item_id))
   const qty = parseFloat(form.quantity)
   const isAdd = !isNaN(qty) && qty > 0
   const isRemove = !isNaN(qty) && qty < 0
 
   // Warn if removal exceeds available stock
-  const stockWarning = isRemove && selectedProduct && Math.abs(qty) > selectedProduct.total_remaining
-    ? `Only ${num(selectedProduct.total_remaining, 2)} ${selectedProduct.unit_type} available`
+  const stockWarning = isRemove && selectedItem && Math.abs(qty) > selectedItem.total_remaining
+    ? `Only ${num(selectedItem.total_remaining, 2)} ${selectedItem.unit_type} available`
     : null
 
   return (
@@ -82,14 +82,14 @@ export default function StockAdjust() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Product</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Item</label>
               <select
-                value={form.product_id}
-                onChange={e => setForm({ ...form, product_id: e.target.value })}
+                value={form.item_id}
+                onChange={e => setForm({ ...form, item_id: e.target.value })}
                 className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
                 required
               >
-                <option value="">Select product</option>
+                <option value="">Select item</option>
                 {stock.map(p => (
                   <option key={p.id} value={p.id}>
                     {p.name} — {num(p.total_remaining, 2)} {p.unit_type} in stock
@@ -124,12 +124,19 @@ export default function StockAdjust() {
                     isAdd ? 'text-emerald-600' : 'text-amber-600'
                   }`}>
                     {isAdd ? '▲ Add' : '▼ Remove'}
-                    {selectedProduct ? ` · ${selectedProduct.unit_type}` : ''}
+                    {selectedItem ? ` · ${selectedItem.unit_type}` : ''}
                   </span>
                 )}
               </div>
               {stockWarning && (
                 <p className="mt-1 text-xs text-red-500">{stockWarning}</p>
+              )}
+              {(isAdd || isRemove) && !stockWarning && (
+                <p className="mt-1 text-xs text-gray-500">
+                  {isAdd
+                    ? 'Added stock is valued at the last purchase price and booked as an inventory gain.'
+                    : 'Removed stock is valued at its FIFO cost and booked as inventory loss / waste.'}
+                </p>
               )}
             </div>
 
@@ -189,9 +196,9 @@ export default function StockAdjust() {
                   <li
                     key={p.id}
                     className={`px-4 py-2.5 flex items-center justify-between cursor-pointer hover:bg-white/40 transition-colors ${
-                      form.product_id === String(p.id) ? 'bg-indigo-50/60' : ''
+                      form.item_id === String(p.id) ? 'bg-indigo-50/60' : ''
                     }`}
-                    onClick={() => setForm(f => ({ ...f, product_id: String(p.id) }))}
+                    onClick={() => setForm(f => ({ ...f, item_id: String(p.id) }))}
                   >
                     <span className="text-sm text-gray-700 truncate mr-2">{p.name}</span>
                     <span className={`text-xs font-semibold shrink-0 ${isLow ? 'text-red-500' : 'text-gray-500'}`}>
@@ -218,7 +225,7 @@ export default function StockAdjust() {
             <thead>
               <tr className="bg-white/30 border-b border-white/60">
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Item</th>
                 <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Quantity</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Note</th>
               </tr>
@@ -227,7 +234,7 @@ export default function StockAdjust() {
               {history.map(a => (
                 <tr key={a.id} className="hover:bg-white/40 transition-colors">
                   <td className="px-5 py-3 text-gray-500">{a.date}</td>
-                  <td className="px-5 py-3 font-medium text-gray-800">{a.product_name}</td>
+                  <td className="px-5 py-3 font-medium text-gray-800">{a.item_name}</td>
                   <td className={`px-5 py-3 text-right font-semibold ${a.quantity > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
                     {a.quantity > 0 ? '+' : ''}{num(a.quantity, 2)} {a.unit_type}
                   </td>

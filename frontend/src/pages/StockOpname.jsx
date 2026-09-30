@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { apiFetch } from '../lib/api'
 
-const today = () => new Date().toISOString().split('T')[0]
+import { today } from '../lib/format'
 const num = (n, d = 2) => Number(n).toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d })
 
 export default function StockOpname() {
   const [stock, setStock] = useState([])
   const [history, setHistory] = useState([])
-  const [form, setForm] = useState({ product_id: '', counted_quantity: '', note: '', date: today() })
+  const [form, setForm] = useState({ item_id: '', counted_quantity: '', note: '', date: today() })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -43,14 +43,14 @@ export default function StockOpname() {
       if (!res.ok) return setError(data.error)
 
       if (data.delta === 0) {
-        setSuccess(`${data.product_name}: no change — already at ${num(data.counted_quantity)} ${data.unit_type}`)
+        setSuccess(`${data.item_name}: no change — already at ${num(data.counted_quantity)} ${data.unit_type}`)
       } else {
         setSuccess(
-          `${data.product_name}: counted ${num(data.counted_quantity)} ${data.unit_type} ` +
+          `${data.item_name}: counted ${num(data.counted_quantity)} ${data.unit_type} ` +
           `(was ${num(data.previous_quantity)}, ${data.delta > 0 ? '+' : ''}${num(data.delta)})`
         )
       }
-      setForm({ product_id: '', counted_quantity: '', note: '', date: today() })
+      setForm({ item_id: '', counted_quantity: '', note: '', date: today() })
       fetchAll()
     } catch {
       setError('Failed to record stock opname')
@@ -59,10 +59,10 @@ export default function StockOpname() {
     }
   }
 
-  const selectedProduct = stock.find(p => p.id === Number(form.product_id))
+  const selectedItem = stock.find(p => p.id === Number(form.item_id))
   const counted = parseFloat(form.counted_quantity)
-  const hasDelta = selectedProduct && !isNaN(counted)
-  const delta = hasDelta ? counted - selectedProduct.total_remaining : null
+  const hasDelta = selectedItem && !isNaN(counted)
+  const delta = hasDelta ? counted - selectedItem.total_remaining : null
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -93,14 +93,14 @@ export default function StockOpname() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Product</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Item</label>
               <select
-                value={form.product_id}
-                onChange={e => setForm({ ...form, product_id: e.target.value })}
+                value={form.item_id}
+                onChange={e => setForm({ ...form, item_id: e.target.value })}
                 className="w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60"
                 required
               >
-                <option value="">Select product</option>
+                <option value="">Select item</option>
                 {stock.map(p => (
                   <option key={p.id} value={p.id}>
                     {p.name} — system says {num(p.total_remaining)} {p.unit_type}
@@ -130,7 +130,7 @@ export default function StockOpname() {
                 }`}>
                   {delta === 0
                     ? 'No change from current system stock'
-                    : `Will ${delta > 0 ? 'add' : 'remove'} ${num(Math.abs(delta))} ${selectedProduct.unit_type} ${delta > 0 ? '(at historical avg. price)' : '(FIFO)'}`}
+                    : `Will ${delta > 0 ? 'add' : 'remove'} ${num(Math.abs(delta))} ${selectedItem.unit_type} ${delta > 0 ? '(valued at last purchase price)' : '(FIFO)'}`}
                 </p>
               )}
             </div>
@@ -183,9 +183,9 @@ export default function StockOpname() {
                 <li
                   key={p.id}
                   className={`px-4 py-2.5 flex items-center justify-between cursor-pointer hover:bg-white/40 transition-colors ${
-                    form.product_id === String(p.id) ? 'bg-indigo-50/60' : ''
+                    form.item_id === String(p.id) ? 'bg-indigo-50/60' : ''
                   }`}
-                  onClick={() => setForm(f => ({ ...f, product_id: String(p.id) }))}
+                  onClick={() => setForm(f => ({ ...f, item_id: String(p.id) }))}
                 >
                   <span className="text-sm text-gray-700 truncate mr-2">{p.name}</span>
                   <span className="text-xs font-semibold shrink-0 text-gray-500">
@@ -211,7 +211,7 @@ export default function StockOpname() {
             <thead>
               <tr className="bg-white/30 border-b border-white/60">
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Product</th>
+                <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Item</th>
                 <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Adjustment</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Note</th>
               </tr>
@@ -220,7 +220,7 @@ export default function StockOpname() {
               {history.map(a => (
                 <tr key={a.id} className="hover:bg-white/40 transition-colors">
                   <td className="px-5 py-3 text-gray-500">{a.date}</td>
-                  <td className="px-5 py-3 font-medium text-gray-800">{a.product_name}</td>
+                  <td className="px-5 py-3 font-medium text-gray-800">{a.item_name}</td>
                   <td className={`px-5 py-3 text-right font-semibold ${a.quantity > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
                     {a.quantity > 0 ? '+' : ''}{num(a.quantity)} {a.unit_type}
                   </td>

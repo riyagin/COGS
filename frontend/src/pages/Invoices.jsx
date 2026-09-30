@@ -1,12 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { apiFetch } from '../lib/api'
-
-function rp(n) {
-  return 'Rp ' + Number(n).toLocaleString('id-ID', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })
-}
+import { rp } from '../lib/format'
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState([])
@@ -40,7 +34,7 @@ export default function Invoices() {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Invoices</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Invoice history from the POS terminal</p>
+          <p className="text-sm text-gray-500 mt-0.5">Sales, with the cost of what was sold</p>
         </div>
         <span className="text-sm text-gray-400">{invoices.length} invoice{invoices.length !== 1 ? 's' : ''}</span>
       </div>
@@ -51,7 +45,7 @@ export default function Invoices() {
 
       {!loading && invoices.length === 0 && (
         <div className="glass-card p-12 text-center">
-          <p className="text-gray-400 text-sm">No invoices yet. Print one from the POS app.</p>
+          <p className="text-gray-400 text-sm">No invoices yet.</p>
         </div>
       )}
 
@@ -66,14 +60,15 @@ export default function Invoices() {
                 <th className="text-right px-5 py-3 font-semibold text-gray-600">Subtotal</th>
                 <th className="text-right px-5 py-3 font-semibold text-gray-600">Discount</th>
                 <th className="text-right px-5 py-3 font-semibold text-gray-600">Total</th>
+                <th className="text-right px-5 py-3 font-semibold text-gray-600">Cost</th>
+                <th className="text-right px-5 py-3 font-semibold text-gray-600">Margin</th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
             <tbody>
               {invoices.map(inv => (
-                <>
+                <Fragment key={inv.id}>
                   <tr
-                    key={inv.id}
                     className="border-b border-white/50 hover:bg-white/40 cursor-pointer"
                     onClick={() => toggleExpand(inv.id)}
                   >
@@ -88,6 +83,12 @@ export default function Invoices() {
                       {inv.discount > 0 ? `- ${rp(inv.discount)}` : '—'}
                     </td>
                     <td className="px-5 py-3 text-right font-semibold text-gray-900">{rp(inv.total)}</td>
+                    <td className="px-5 py-3 text-right text-gray-600">{inv.cogs != null ? rp(inv.cogs) : '—'}</td>
+                    <td className="px-5 py-3 text-right text-gray-700">
+                      {inv.cogs != null && inv.subtotal - inv.discount > 0
+                        ? `${(((inv.subtotal - inv.discount - inv.cogs) / (inv.subtotal - inv.discount)) * 100).toFixed(0)}%`
+                        : '—'}
+                    </td>
                     <td className="px-5 py-3 text-right">
                       <button
                         className="text-red-400 hover:text-red-600 text-xs px-2 py-1 rounded hover:bg-red-50"
@@ -99,8 +100,8 @@ export default function Invoices() {
                   </tr>
 
                   {expanded === inv.id && (
-                    <tr key={`${inv.id}-detail`} className="bg-indigo-50/60 border-b border-white/50">
-                      <td colSpan={7} className="px-8 py-4">
+                    <tr className="bg-indigo-50/60 border-b border-white/50">
+                      <td colSpan={9} className="px-8 py-4">
                         {inv.note && (
                           <p className="text-xs text-gray-500 mb-3">Note: {inv.note}</p>
                         )}
@@ -146,7 +147,7 @@ export default function Invoices() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>

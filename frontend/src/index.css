@@ -94,3 +94,17 @@
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* Printing reports (Accounting > Print): plain white page, no frosted glass */
+@media print {
+  body {
+    background: white;
+  }
+  .glass-card {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    border-color: #e5e7eb;
+    background: white;
+  }
+}

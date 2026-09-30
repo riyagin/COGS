@@ -7,8 +7,10 @@ const path = require('path');
 const db = require('../db');
 
 const TABLES = [
-  'users', 'products', 'recipes', 'recipe_items', 'productions', 'inventory_items',
-  'invoices', 'invoice_items', 'invoice_item_consumptions', 'stock_adjustments',
+  'users', 'items', 'recipes', 'recipe_versions', 'recipe_items', 'productions',
+  'accounts', 'purchases', 'purchase_lines', 'inventory_items',
+  'products', 'product_components', 'invoices', 'invoice_items', 'invoice_item_consumptions',
+  'stock_adjustments', 'journal_entries', 'journal_lines',
 ];
 
 (async () => {
