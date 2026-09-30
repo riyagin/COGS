@@ -6,19 +6,19 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../db');
 
-const TABLES = [
-  'users', 'items', 'recipes', 'recipe_versions', 'recipe_items', 'productions',
-  'accounts', 'purchases', 'purchase_lines', 'inventory_items',
-  'products', 'product_components', 'invoices', 'invoice_items', 'invoice_item_consumptions',
-  'stock_adjustments', 'journal_entries', 'journal_lines',
-];
-
 (async () => {
+  // Whatever tables exist, so a backup taken before a migration (old layout) works too
+  const tables = (await db.query(`
+    SELECT table_name FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+    ORDER BY table_name
+  `)).map(r => r.table_name);
+
   const data = { taken_at: new Date().toISOString(), tables: {} };
-  for (const t of TABLES) {
+  for (const t of tables) {
     // Password hashes are left out: a backup file should never hold credentials
     const cols = t === 'users' ? 'id, username, name, role, active, created_at' : '*';
-    data.tables[t] = await db.query(`SELECT ${cols} FROM ${t} ORDER BY id`);
+    data.tables[t] = await db.query(`SELECT ${cols} FROM "${t}" ORDER BY id`);
   }
 
   const dir = path.join(__dirname, '..', 'backups');
