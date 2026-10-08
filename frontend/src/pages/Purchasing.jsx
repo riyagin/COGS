@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { apiFetch } from '../lib/api'
 import { rp, qty, unitRp, today } from '../lib/format'
-import { Alert, ItemSelect, PageHeader, SectionTitle, Tabs, inputCls, labelCls, thCls, jsonOrThrow } from '../components/ui'
+import { Alert, ItemSelect, MoneyInput, PageHeader, Segmented, SectionTitle, Tabs, inputCls, labelCls, thCls, jsonOrThrow } from '../components/ui'
 
 const newLine = (kind = 'item') => ({ kind, item_id: '', quantity: '', amount: '', account_id: '', description: '' })
 const emptyForm = () => ({ date: today(), supplier: '', reference: '', note: '', payment: 'cash', lines: [newLine()] })
@@ -11,21 +11,6 @@ const PAYMENT_OPTIONS = [
   { value: 'bank', label: 'Bank' },
   { value: 'unpaid', label: 'Unpaid' },
 ]
-
-function Segmented({ options, value, onChange }) {
-  return (
-    <div className="inline-flex rounded-lg border border-white/70 bg-white/40 p-0.5">
-      {options.map(o => (
-        <button
-          key={o.value} type="button" onClick={() => onChange(o.value)}
-          className={`px-3 py-1.5 text-sm rounded-md font-medium transition-colors ${value === o.value ? 'bg-white shadow text-indigo-700' : 'text-gray-600 hover:text-gray-900'}`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  )
-}
 
 // One stock line with the last-price hint
 function ItemLine({ line, items, onChange }) {
@@ -47,8 +32,8 @@ function ItemLine({ line, items, onChange }) {
             onChange={e => onChange({ quantity: e.target.value })} className={`${inputCls} pr-10`} required />
           <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">{item?.unit_type}</span>
         </div>
-        <input type="number" step="any" min="0" placeholder={suggested != null ? `≈ ${qty(suggested)}` : 'Total Rp'}
-          value={line.amount} onChange={e => onChange({ amount: e.target.value })} className={inputCls} required />
+        <MoneyInput placeholder={suggested != null ? `≈ ${qty(suggested)}` : 'Total Rp'}
+          value={line.amount} onChange={v => onChange({ amount: v })} required />
       </div>
       {(lastUnit != null || unitPrice) && (
         <p className="mt-1 text-xs text-gray-500 flex flex-wrap gap-x-2">
@@ -80,7 +65,7 @@ function ExpenseLine({ line, accounts, onChange }) {
         {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
       </select>
       <input placeholder="What for (optional)" value={line.description} onChange={e => onChange({ description: e.target.value })} className={inputCls} />
-      <input type="number" step="any" min="0" placeholder="Total Rp" value={line.amount} onChange={e => onChange({ amount: e.target.value })} className={inputCls} required />
+      <MoneyInput placeholder="Total Rp" value={line.amount} onChange={v => onChange({ amount: v })} required />
     </div>
   )
 }

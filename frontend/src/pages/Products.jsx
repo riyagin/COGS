@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { apiFetch } from '../lib/api'
 import { rp, qty } from '../lib/format'
-import { Alert, ItemSelect, PageHeader, SectionTitle, inputCls, labelCls, secondaryBtn, jsonOrThrow } from '../components/ui'
+import { Alert, ItemSelect, MoneyInput, PageHeader, SectionTitle, inputCls, labelCls, secondaryBtn, jsonOrThrow } from '../components/ui'
 
 const emptyForm = () => ({ name: '', unit: 'pcs', sell_price: '', active: true, components: [{ item_id: '', quantity: '1' }] })
 
@@ -47,7 +47,7 @@ function ProductForm({ items, product, onSaved, onCancel }) {
         </div>
         <div>
           <label className={labelCls}>Selling price (Rp)</label>
-          <input type="number" step="any" min="0" value={form.sell_price} onChange={e => setForm({ ...form, sell_price: e.target.value })} className={inputCls} />
+          <MoneyInput value={form.sell_price ?? ''} onChange={v => setForm({ ...form, sell_price: v })} />
         </div>
       </div>
 

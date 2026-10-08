@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '../../../frontend/src/lib/api'
 import { qty, unitRp, today } from '../../../frontend/src/lib/format'
-import { Alert, PageHeader, jsonOrThrow } from '../../../frontend/src/components/ui'
+import { Alert, MoneyInput, PageHeader, jsonOrThrow } from '../../../frontend/src/components/ui'
 import { useMe } from '../../../frontend/src/auth/AuthGate'
 import ItemInput from '../components/ItemInput'
 import { Spinner } from '../components/bits'
@@ -241,8 +241,8 @@ export default function StockMoves() {
                   </td>
                   <td className="px-1 py-1.5">
                     {row.mode !== 'out' && (
-                      <input type="number" step="any" min="0" value={row.unit_price} disabled={locked}
-                        onChange={e => setRow(row.key, { unit_price: e.target.value })}
+                      <MoneyInput value={row.unit_price} disabled={locked}
+                        onChange={v => setRow(row.key, { unit_price: v })}
                         placeholder={item?.last_unit_price != null ? unitRp(item.last_unit_price) : 'Rp / unit'}
                         className="w-full glass-input px-2 py-1.5 text-sm text-right" />
                     )}

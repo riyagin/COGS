@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '../../../frontend/src/lib/api'
 import { rp, qty, unitRp, today } from '../../../frontend/src/lib/format'
-import { Alert, PageHeader, jsonOrThrow, inputCls, labelCls } from '../../../frontend/src/components/ui'
+import { Alert, MoneyInput, PageHeader, jsonOrThrow, inputCls, labelCls } from '../../../frontend/src/components/ui'
 import { useMe } from '../../../frontend/src/auth/AuthGate'
 import ItemInput from '../components/ItemInput'
 import { MatchBadge, Segmented, Spinner, useImageUrl } from '../components/bits'
@@ -519,8 +519,8 @@ function ReceiptEditor({ draft, ctx, readOnly, engine, onChange, onSave, onRemov
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500">Printed total</label>
-                  <input type="number" min="0" step="any" disabled={!editable} value={receiptTotal ?? ''} placeholder="from receipt"
-                    onChange={e => onChange({ receiptTotal: e.target.value === '' ? null : e.target.value })}
+                  <MoneyInput disabled={!editable} value={receiptTotal ?? ''} placeholder="from receipt"
+                    onChange={v => onChange({ receiptTotal: v === '' ? null : v })}
                     className="glass-input px-2 py-1 text-sm w-32" />
                 </div>
                 {Math.abs(diff) >= 1 && (
@@ -604,8 +604,8 @@ function LineEditor({ line, items, accounts, onChange, onRemove }) {
             <input value={line.description} onChange={e => onChange({ description: e.target.value })} placeholder="What for"
               className="glass-input px-2 py-1.5 text-sm" />
           )}
-          <input type="number" step="any" min="0" value={line.amount} placeholder="Total Rp"
-            onChange={e => onChange({ amount: e.target.value })}
+          <MoneyInput value={line.amount} placeholder="Total Rp"
+            onChange={v => onChange({ amount: v })}
             className={`glass-input px-2 py-1.5 text-sm text-right ${!(amount > 0) ? '!border-red-300' : ''}`} />
         </div>
       )}

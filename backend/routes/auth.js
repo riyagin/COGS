@@ -80,4 +80,12 @@ const changePassword = ah(async (req, res) => {
   res.json({ token: await signToken(updated), user: publicUser(updated) });
 });
 
-module.exports = { login, changePassword, normalizeUsername };
+// POST /api/auth/refresh -> { token, user }
+// A fresh 14-day token for a signed-in user, so an unattended client (KSK Desktop) that syncs
+// regularly stays signed in. A password reset or deactivation still ends it.
+const refresh = ah(async (req, res) => {
+  if (req.user.dev) return res.status(400).json({ error: 'Sign-in is not enabled on this server' });
+  res.json({ token: await signToken(req.user), user: publicUser(req.user) });
+});
+
+module.exports = { login, changePassword, refresh, normalizeUsername };

@@ -1,5 +1,6 @@
 // Small shared building blocks for the pages.
-import { TIERS, TIER_LABEL, qty } from '../lib/format'
+import { useRef } from 'react'
+import { TIERS, TIER_LABEL, qty, moneyText, parseMoneyText } from '../lib/format'
 
 export function Alert({ kind = 'error', children, onClose }) {
   if (!children) return null
@@ -88,6 +89,52 @@ export function Tabs({ tabs, value, onChange }) {
         </button>
       ))}
     </div>
+  )
+}
+
+// A row of toggle buttons, one of which is chosen
+export function Segmented({ options, value, onChange }) {
+  return (
+    <div className="inline-flex rounded-lg border border-white/70 bg-white/40 p-0.5">
+      {options.map(o => (
+        <button
+          key={o.value} type="button" onClick={() => onChange(o.value)}
+          className={`px-3 py-1.5 text-sm rounded-md font-medium transition-colors ${value === o.value ? 'bg-white shadow text-indigo-700' : 'text-gray-600 hover:text-gray-900'}`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// A rupiah amount, shown with thousands dots while typing (1.500.000). `value` and the
+// value passed to onChange are plain number strings ("1500000"), so Number() reads them.
+export function MoneyInput({ value, onChange, className = inputCls, ...props }) {
+  const ref = useRef(null)
+
+  function handleChange(e) {
+    const el = e.target
+    // Where the caret sits, counted in digits and commas, so re-adding dots doesn't move it
+    const caret = el.selectionStart ?? el.value.length
+    const meaningful = el.value.slice(0, caret).replace(/[^\d,]/g, '').length
+    onChange(parseMoneyText(el.value))
+    requestAnimationFrame(() => {
+      const node = ref.current
+      if (!node || document.activeElement !== node) return
+      let pos = 0
+      for (let seen = 0; pos < node.value.length && seen < meaningful; pos++) {
+        if (/[\d,]/.test(node.value[pos])) seen++
+      }
+      node.setSelectionRange(pos, pos)
+    })
+  }
+
+  return (
+    <input
+      ref={ref} type="text" inputMode="decimal" autoComplete="off"
+      value={moneyText(value)} onChange={handleChange} className={className} {...props}
+    />
   )
 }
 

@@ -74,9 +74,71 @@ async function post(t, { date, memo, source_type = 'manual', source_id = null, c
   return id;
 }
 
+// Many app-made entries at once, in three queries however many there are (bulk imports
+// over a slow link). entries: [{ date, memo, source_type, source_id, created_by, lines }];
+// each entry's lines are netted per account like post()'s merge. One entry per source_id.
+async function postMany(t, entries) {
+  if (entries.length === 0) return;
+  const resolve = await resolveAccounts(t, entries.flatMap(e => e.lines.map(l => l.account)));
+
+  const prepared = entries.map(e => {
+    const net = new Map();
+    for (const l of e.lines) {
+      const id = resolve(l.account);
+      net.set(id, (net.get(id) || 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0));
+    }
+    const rows = [...net]
+      .filter(([, n]) => Math.abs(n) >= EPS)
+      .map(([account_id, n]) => ({ account_id, debit: n > 0 ? n : 0, credit: n < 0 ? -n : 0 }));
+    const off = rows.reduce((s, r) => s + r.debit - r.credit, 0);
+    if (!rows.every(r => Number.isFinite(r.debit) && Number.isFinite(r.credit)) || Math.abs(off) >= EPS) {
+      throw new HttpError(400, `Entry "${e.memo}" does not balance (off by ${off.toFixed(2)})`);
+    }
+    return { ...e, rows };
+  }).filter(e => e.rows.length > 0);
+  if (prepared.length === 0) return;
+
+  const created = await t.query(`
+    INSERT INTO journal_entries (date, memo, source_type, source_id, created_by)
+    SELECT date, memo, source_type, source_id, created_by
+    FROM jsonb_to_recordset($1::jsonb) AS r(date text, memo text, source_type text, source_id int, created_by int)
+    RETURNING id, source_type, source_id
+  `, [JSON.stringify(prepared.map(({ date, memo, source_type, source_id, created_by }) =>
+    ({ date, memo: memo || null, source_type, source_id, created_by: created_by ?? null })))]);
+
+  const entryId = new Map(created.map(c => [`${c.source_type}:${c.source_id}`, c.id]));
+  const lines = prepared.flatMap(e => e.rows.map(r => ({ entry_id: entryId.get(`${e.source_type}:${e.source_id}`), ...r })));
+  await t.query(`
+    INSERT INTO journal_lines (entry_id, account_id, debit, credit)
+    SELECT entry_id, account_id, debit, credit
+    FROM jsonb_to_recordset($1::jsonb) AS r(entry_id int, account_id int, debit float8, credit float8)
+  `, [JSON.stringify(lines)]);
+}
+
+// Chart of accounts numbering: 6 digits, the first one is the type
+const TYPE_PREFIX = { asset: 1, liability: 2, equity: 3, revenue: 4, cogs: 5, expense: 6 };
+const ACCOUNT_CODE = /^[0-9]{6}$/;
+
+// The next free code for a new account of `type`: the roundest one still free, so new
+// accounts land on 660000, 670000, ... before 601000, 602000, ... before 600100, ...
+async function nextAccountCode(t, type) {
+  const prefix = TYPE_PREFIX[type];
+  if (!prefix) throw new HttpError(400, `Unknown account type: ${type}`);
+  const base = prefix * 100000;
+  const used = new Set((await t.query(
+    'SELECT code FROM accounts WHERE code >= $1 AND code <= $2', [String(base), String(base + 99999)]
+  )).map(r => Number(r.code)));
+  for (const step of [10000, 1000, 100, 10, 1]) {
+    for (let code = base + step; code <= base + 99999; code += step) {
+      if (!used.has(code)) return String(code);
+    }
+  }
+  throw new HttpError(409, `No free account codes left for ${type} accounts`);
+}
+
 // Remove the entries a record posted (e.g. when a purchase or invoice is deleted)
 async function unpost(t, source_type, source_id) {
   await t.query('DELETE FROM journal_entries WHERE source_type = $1 AND source_id = $2', [source_type, source_id]);
 }
 
-module.exports = { post, unpost, inventoryAccount, PAYMENT_ACCOUNTS, EPS };
+module.exports = { post, postMany, unpost, inventoryAccount, nextAccountCode, PAYMENT_ACCOUNTS, TYPE_PREFIX, ACCOUNT_CODE, EPS };

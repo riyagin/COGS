@@ -60,6 +60,9 @@ END $$;
 -- type drives the reports: asset/liability/equity -> balance sheet,
 -- revenue/cogs/expense -> profit & loss. system_key marks the accounts the app posts
 -- to automatically (see backend/ledger.js); those can be renamed but not removed.
+--
+-- Codes are 6 digits and assigned by the app (ledger.nextAccountCode). The first digit is
+-- the type: 1 asset, 2 liability, 3 equity, 4 revenue, 5 cost of goods sold, 6 expense.
 CREATE TABLE IF NOT EXISTS accounts (
   id          SERIAL PRIMARY KEY,
   code        TEXT NOT NULL UNIQUE,
@@ -70,33 +73,68 @@ CREATE TABLE IF NOT EXISTS accounts (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- One-time upgrade (2026-10-08): 4-digit codes become 6 digits ("6100" -> "610000"), before
+-- the seeds below run, so seeded accounts match up with the renumbered ones. Any other code
+-- that isn't 6 digits gets the next free code of its type.
+DO $$
+DECLARE r RECORD; prefix TEXT; candidate INTEGER;
+BEGIN
+  UPDATE accounts SET code = code || '00'
+  WHERE code ~ '^[0-9]{4}$' AND NOT EXISTS (SELECT 1 FROM accounts x WHERE x.code = accounts.code || '00');
+
+  FOR r IN SELECT * FROM accounts WHERE code !~ '^[0-9]{6}$' ORDER BY code LOOP
+    prefix := CASE r.type WHEN 'asset' THEN '1' WHEN 'liability' THEN '2' WHEN 'equity' THEN '3'
+                          WHEN 'revenue' THEN '4' WHEN 'cogs' THEN '5' ELSE '6' END;
+    SELECT MIN(c) INTO candidate
+    FROM generate_series(prefix::int * 100000 + 100, prefix::int * 100000 + 99900, 100) AS c
+    WHERE NOT EXISTS (SELECT 1 FROM accounts x WHERE x.code = c::text);
+    UPDATE accounts SET code = candidate::text WHERE id = r.id;
+  END LOOP;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'accounts_code_six_digits') THEN
+    ALTER TABLE accounts ADD CONSTRAINT accounts_code_six_digits CHECK (code ~ '^[0-9]{6}$');
+  END IF;
+END $$;
+
 INSERT INTO accounts (code, name, type, system_key) VALUES
-  ('1000', 'Cash',                             'asset',     'cash'),
-  ('1010', 'Bank',                             'asset',     'bank'),
-  ('1100', 'Accounts receivable',              'asset',     'receivable'),
-  ('1200', 'Inventory - raw materials',        'asset',     'inventory_raw'),
-  ('1210', 'Inventory - preprocessed',         'asset',     'inventory_preprocessed'),
-  ('1220', 'Inventory - finished goods',       'asset',     'inventory_final'),
-  ('2000', 'Accounts payable',                 'liability', 'payable'),
-  ('2100', 'Tax payable',                      'liability', 'tax_payable'),
-  ('3000', 'Owner''s capital',                 'equity',    'capital'),
-  ('3900', 'Opening balance',                  'equity',    'opening_balance'),
-  ('4000', 'Sales',                            'revenue',   'sales'),
-  ('4900', 'Sales discounts',                  'revenue',   'sales_discounts'),
-  ('5000', 'Cost of goods sold',               'cogs',      'cogs'),
-  ('5100', 'Inventory adjustments & waste',    'cogs',      'inventory_adjustments'),
-  ('6000', 'General expenses',                 'expense',   'expense_general')
+  ('100000', 'Cash',                             'asset',     'cash'),
+  ('101000', 'Bank',                             'asset',     'bank'),
+  ('110000', 'Accounts receivable',              'asset',     'receivable'),
+  ('120000', 'Inventory - raw materials',        'asset',     'inventory_raw'),
+  ('121000', 'Inventory - preprocessed',         'asset',     'inventory_preprocessed'),
+  ('122000', 'Inventory - finished goods',       'asset',     'inventory_final'),
+  ('200000', 'Accounts payable',                 'liability', 'payable'),
+  ('210000', 'Tax payable',                      'liability', 'tax_payable'),
+  ('300000', 'Owner''s capital',                 'equity',    'capital'),
+  ('390000', 'Opening balance',                  'equity',    'opening_balance'),
+  ('400000', 'Sales',                            'revenue',   'sales'),
+  ('410000', 'Sales - café (KSK POS)',           'revenue',   'sales_pos'),
+  ('490000', 'Sales discounts',                  'revenue',   'sales_discounts'),
+  ('500000', 'Cost of goods sold',               'cogs',      'cogs'),
+  ('510000', 'Inventory adjustments & waste',    'cogs',      'inventory_adjustments'),
+  ('600000', 'General expenses',                 'expense',   'expense_general')
 ON CONFLICT DO NOTHING;
 
 -- Starter expense accounts; free to rename, deactivate or add to
 INSERT INTO accounts (code, name, type) VALUES
-  ('6100', 'Utilities (gas, electricity, water)', 'expense'),
-  ('6200', 'Transport & delivery',                'expense'),
-  ('6300', 'Rent',                                'expense'),
-  ('6400', 'Salaries & wages',                    'expense'),
-  ('6500', 'Equipment & supplies',                'expense'),
-  ('6900', 'Other expenses',                      'expense')
+  ('610000', 'Utilities (gas, electricity, water)', 'expense'),
+  ('620000', 'Transport & delivery',                'expense'),
+  ('630000', 'Rent',                                'expense'),
+  ('640000', 'Salaries & wages',                    'expense'),
+  ('650000', 'Equipment & supplies',                'expense'),
+  ('690000', 'Other expenses',                      'expense')
 ON CONFLICT DO NOTHING;
+
+-- Added after the first release: if its seeded code was already taken, use the next free one
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM accounts WHERE system_key = 'sales_pos') THEN
+    INSERT INTO accounts (code, name, type, system_key)
+    SELECT MIN(c)::text, 'Sales - café (KSK POS)', 'revenue', 'sales_pos'
+    FROM generate_series(400100, 499900, 100) AS c
+    WHERE NOT EXISTS (SELECT 1 FROM accounts x WHERE x.code = c::text);
+  END IF;
+END $$;
 
 -- ── Items, recipes, production ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS items (
@@ -374,6 +412,68 @@ CREATE TABLE IF NOT EXISTS invoice_item_consumptions (
   quantity           DOUBLE PRECISION NOT NULL
 );
 
+-- ── Café sales from the KSK POS ───────────────────────────────────────────────
+-- Pushed by KSK Desktop from its mirror of the counter tablet (POST /api/pos/sync).
+-- One row per closed sale, keyed by the tablet's sale number. Re-sending a sale replaces it
+-- when its content changed (content_hash); a PAID sale posts one journal entry
+-- (source_type 'pos_sale'), a VOID one keeps its row and loses the entry.
+-- Money is whole rupiah as the tablet stores it. Selling does not move stock (the POS has
+-- no recipes), so these carry revenue only.
+CREATE TABLE IF NOT EXISTS pos_sales (
+  id                 SERIAL PRIMARY KEY,
+  source             TEXT NOT NULL DEFAULT 'ksk',
+  external_id        TEXT NOT NULL,
+  sale_number        TEXT,
+  business_day       TEXT NOT NULL,
+  closed_at          TIMESTAMPTZ,
+  status             TEXT NOT NULL CHECK (status IN ('PAID', 'VOID')),
+  gross              DOUBLE PRECISION NOT NULL DEFAULT 0,  -- unit price x qty, before discounts
+  discount           DOUBLE PRECISION NOT NULL DEFAULT 0,  -- line + order discounts
+  rounding           DOUBLE PRECISION NOT NULL DEFAULT 0,
+  tax                DOUBLE PRECISION NOT NULL DEFAULT 0,  -- included in total
+  total              DOUBLE PRECISION NOT NULL DEFAULT 0,  -- what the customer paid
+  payments           JSONB NOT NULL DEFAULT '[]',          -- [{ method, kind, amount }]
+  note               TEXT,
+  void_reason        TEXT,
+  source_updated_at  BIGINT NOT NULL DEFAULT 0,            -- tablet's updatedAt (epoch ms): the sync watermark
+  content_hash       TEXT NOT NULL,
+  synced_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  synced_by          INTEGER REFERENCES users(id),
+  UNIQUE (source, external_id)
+);
+
+CREATE TABLE IF NOT EXISTS pos_sale_lines (
+  id            SERIAL PRIMARY KEY,
+  pos_sale_id   INTEGER NOT NULL REFERENCES pos_sales(id) ON DELETE CASCADE,
+  line_no       INTEGER NOT NULL,
+  product_code  TEXT,
+  product_name  TEXT NOT NULL,
+  category      TEXT,
+  qty           DOUBLE PRECISION NOT NULL,
+  unit_price    DOUBLE PRECISION NOT NULL,
+  discount      DOUBLE PRECISION NOT NULL DEFAULT 0,
+  line_total    DOUBLE PRECISION NOT NULL,
+  note          TEXT
+);
+
+-- ── Other expenses ───────────────────────────────────────────────────────────
+-- Money spent that isn't stock: rent, wages, electricity, marketing... Each one posts a
+-- journal entry (source_type 'expense'); unpaid ones sit in Accounts payable until
+-- settled (source_type 'expense_payment'). unpaid <=> paid_date IS NULL.
+CREATE TABLE IF NOT EXISTS expenses (
+  id                    SERIAL PRIMARY KEY,
+  date                  TEXT NOT NULL,
+  account_id            INTEGER NOT NULL REFERENCES accounts(id),
+  amount                DOUBLE PRECISION NOT NULL CHECK (amount > 0),
+  payee                 TEXT,
+  description           TEXT,
+  reference             TEXT,
+  paid_date             TEXT,
+  paid_from_account_id  INTEGER REFERENCES accounts(id),
+  created_by            INTEGER REFERENCES users(id),
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS stock_adjustments (
   id          SERIAL PRIMARY KEY,
   item_id     INTEGER NOT NULL REFERENCES items(id),
@@ -496,6 +596,13 @@ CREATE INDEX IF NOT EXISTS journal_entries_date_idx                  ON journal_
 CREATE INDEX IF NOT EXISTS journal_entries_created_by_idx            ON journal_entries (created_by);
 CREATE INDEX IF NOT EXISTS journal_lines_entry_id_idx                ON journal_lines (entry_id);
 CREATE INDEX IF NOT EXISTS journal_lines_account_id_idx              ON journal_lines (account_id);
+CREATE INDEX IF NOT EXISTS pos_sales_business_day_idx                ON pos_sales (business_day);
+CREATE INDEX IF NOT EXISTS pos_sales_synced_by_idx                   ON pos_sales (synced_by);
+CREATE INDEX IF NOT EXISTS pos_sale_lines_pos_sale_id_idx            ON pos_sale_lines (pos_sale_id);
+CREATE INDEX IF NOT EXISTS expenses_date_idx                         ON expenses (date);
+CREATE INDEX IF NOT EXISTS expenses_account_id_idx                   ON expenses (account_id);
+CREATE INDEX IF NOT EXISTS expenses_paid_from_account_id_idx         ON expenses (paid_from_account_id);
+CREATE INDEX IF NOT EXISTS expenses_created_by_idx                   ON expenses (created_by);
 
 -- ── Lock down Supabase's Data API ────────────────────────────────────────────
 -- All access goes through our backend, which connects as the table owner (RLS does
@@ -510,7 +617,8 @@ BEGIN
     'items', 'recipes', 'recipe_versions', 'recipe_items', 'productions', 'inventory_items',
     'products', 'product_components', 'purchases', 'purchase_lines',
     'invoices', 'invoice_items', 'invoice_item_consumptions', 'stock_adjustments',
-    'accounts', 'journal_entries', 'journal_lines', 'users'
+    'accounts', 'journal_entries', 'journal_lines', 'users',
+    'pos_sales', 'pos_sale_lines', 'expenses'
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN

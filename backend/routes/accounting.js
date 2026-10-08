@@ -33,21 +33,35 @@ router.get('/accounts', ah(async (req, res) => {
   res.json(rows.map(a => ({ ...a, balance: signed(a.type, a.debit, a.credit) })));
 }));
 
+// { name, type, code? }: the code is assigned (ledger.nextAccountCode) unless one is given.
+// Retries a few times in case two people add an account of the same type at once.
 router.post('/accounts', ah(async (req, res) => {
-  const code = req.body.code?.trim();
   const name = req.body.name?.trim();
   const { type } = req.body;
-  if (!code || !name) throw new HttpError(400, 'Code and name are required');
+  if (!name) throw new HttpError(400, 'Name is required');
   if (!TYPES.includes(type)) throw new HttpError(400, `type must be one of ${TYPES.join(', ')}`);
-  try {
-    res.status(201).json(await db.one(
-      'INSERT INTO accounts (code, name, type) VALUES ($1, $2, $3) RETURNING *', [code, name, type]
-    ));
-  } catch (err) {
-    if (isUniqueViolation(err)) throw new HttpError(409, 'That account code is already used');
-    throw err;
+  const wanted = req.body.code ? checkCode(String(req.body.code).trim(), type) : null;
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const code = wanted || await ledger.nextAccountCode(db, type);
+      return res.status(201).json(await db.one(
+        'INSERT INTO accounts (code, name, type) VALUES ($1, $2, $3) RETURNING *', [code, name, type]
+      ));
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      if (wanted || attempt >= 3) throw new HttpError(409, 'That account code is already used');
+    }
   }
 }));
+
+function checkCode(code, type) {
+  if (!ledger.ACCOUNT_CODE.test(code)) throw new HttpError(400, 'Account codes are 6 digits');
+  if (Number(code[0]) !== ledger.TYPE_PREFIX[type]) {
+    throw new HttpError(400, `${type[0].toUpperCase() + type.slice(1)} account codes start with ${ledger.TYPE_PREFIX[type]}`);
+  }
+  return code;
+}
 
 // Rename / renumber / (de)activate. The app's own accounts stay active and keep their type.
 router.patch('/accounts/:id', ah(async (req, res) => {
@@ -56,11 +70,12 @@ router.patch('/accounts/:id', ah(async (req, res) => {
   if (account.system_key && req.body.active === false) {
     throw new HttpError(400, 'This account is used automatically by the app and can\'t be deactivated');
   }
+  const code = req.body.code ? checkCode(String(req.body.code).trim(), account.type) : null;
   try {
     res.json(await db.one(`
       UPDATE accounts SET code = COALESCE($2, code), name = COALESCE($3, name), active = COALESCE($4, active)
       WHERE id = $1 RETURNING *
-    `, [account.id, req.body.code?.trim() || null, req.body.name?.trim() || null, req.body.active ?? null]));
+    `, [account.id, code, req.body.name?.trim() || null, req.body.active ?? null]));
   } catch (err) {
     if (isUniqueViolation(err)) throw new HttpError(409, 'That account code is already used');
     throw err;
@@ -140,65 +155,9 @@ router.delete('/journal/:id', ah(async (req, res) => {
 
 // ── Reports ──────────────────────────────────────────────────────────────────
 
-// Every YYYY-MM from `from` to `to`
-function monthsBetween(from, to) {
-  const months = [];
-  let [y, m] = from.slice(0, 7).split('-').map(Number);
-  const [ty, tm] = to.slice(0, 7).split('-').map(Number);
-  while (y < ty || (y === ty && m <= tm)) {
-    months.push(`${y}-${String(m).padStart(2, '0')}`);
-    if (++m > 12) { m = 1; y++; }
-  }
-  return months;
-}
-
-// Profit & loss for ?from&to (default: this month), per account and per month.
-//   Revenue - Cost of goods sold = Gross profit;  Gross profit - Expenses = Net profit
-router.get('/pnl', ah(async (req, res) => {
-  const today = new Date().toLocaleDateString('en-CA');
-  const from = dateParam(req.query.from, 'from') || `${today.slice(0, 7)}-01`;
-  const to = dateParam(req.query.to, 'to') || today;
-  if (from > to) throw new HttpError(400, '"from" must be before "to"');
-
-  const rows = await db.query(`
-    SELECT a.id, a.code, a.name, a.type, substr(e.date, 1, 7) AS month,
-           SUM(l.debit) AS debit, SUM(l.credit) AS credit
-    FROM journal_lines l
-    JOIN journal_entries e ON e.id = l.entry_id
-    JOIN accounts a ON a.id = l.account_id
-    WHERE a.type IN ('revenue', 'cogs', 'expense') AND e.date >= $1 AND e.date <= $2
-    GROUP BY a.id, a.code, a.name, a.type, month
-    ORDER BY a.code
-  `, [from, to]);
-
-  const months = monthsBetween(from, to);
-  const sections = { revenue: [], cogs: [], expense: [] };
-  const byId = new Map();
-  for (const r of rows) {
-    if (!byId.has(r.id)) {
-      const acc = { id: r.id, code: r.code, name: r.name, type: r.type, total: 0, by_month: {} };
-      byId.set(r.id, acc);
-      sections[r.type].push(acc);
-    }
-    const acc = byId.get(r.id);
-    const amount = signed(r.type, r.debit, r.credit);
-    acc.total += amount;
-    acc.by_month[r.month] = (acc.by_month[r.month] || 0) + amount;
-  }
-
-  const sum = (list, month) => list.reduce((s, a) => s + (month ? a.by_month[month] || 0 : a.total), 0);
-  const totalsFor = month => {
-    const revenue = sum(sections.revenue, month);
-    const cogs = sum(sections.cogs, month);
-    const expense = sum(sections.expense, month);
-    return { revenue, cogs, gross_profit: revenue - cogs, expense, net_profit: revenue - cogs - expense };
-  };
-
-  res.json({
-    from, to, months, sections,
-    totals: { ...totalsFor(null), by_month: Object.fromEntries(months.map(m => [m, totalsFor(m)])) },
-  });
-}));
+// Profit & loss lives with the other reports (routes/reports.js); this path is kept for
+// app builds that call it here
+router.get('/pnl', ah(require('./reports').pnl));
 
 // Balance sheet as of ?date (default today). Profit not yet moved to equity shows as
 // "Retained earnings" so assets = liabilities + equity.

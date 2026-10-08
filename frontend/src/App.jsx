@@ -10,6 +10,8 @@ import Invoices from './pages/Invoices'
 import StockAdjust from './pages/StockAdjust'
 import StockOpname from './pages/StockOpname'
 import Accounting from './pages/Accounting'
+import Expenses from './pages/Expenses'
+import Reports from './pages/Reports'
 import Users from './pages/Users'
 import Account from './pages/Account'
 import AuthGate, { useMe, signOut } from './auth/AuthGate'
@@ -24,6 +26,8 @@ const NAV = [
   { to: '/production', label: 'Production', group: 'Kitchen' },
   { to: '/products', label: 'Products', group: 'Sales' },
   { to: '/invoices', label: 'Invoices', group: 'Sales' },
+  { to: '/expenses', label: 'Expenses', group: 'Books' },
+  { to: '/reports', label: 'Reports', group: 'Books' },
   { to: '/accounting', label: 'Accounting', group: 'Books' },
   { to: '/users', label: 'Users', group: 'Admin', adminOnly: true },
 ]
@@ -170,6 +174,8 @@ export default function App() {
             <Route path="/invoices" element={<Invoices />} />
             <Route path="/stock-adjust" element={<StockAdjust />} />
             <Route path="/stock-opname" element={<StockOpname />} />
+            <Route path="/expenses" element={<Expenses />} />
+            <Route path="/reports" element={<Reports />} />
             <Route path="/accounting" element={<Accounting />} />
             <Route path="/users" element={<AdminOnly><Users /></AdminOnly>} />
             <Route path="/account" element={<Account />} />

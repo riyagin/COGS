@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { apiFetch } from '../lib/api'
-import { rp, rpSigned, today, monthLabel } from '../lib/format'
-import { Alert, PageHeader, SectionTitle, Tabs, inputCls, labelCls, thCls, secondaryBtn, jsonOrThrow } from '../components/ui'
+import { rp, rpSigned, today } from '../lib/format'
+import { Alert, MoneyInput, PageHeader, SectionTitle, Tabs, inputCls, labelCls, thCls, secondaryBtn, jsonOrThrow } from '../components/ui'
 
 const TYPE_LABEL = {
   asset: 'Assets', liability: 'Liabilities', equity: 'Equity',
@@ -11,184 +11,7 @@ const TYPE_LABEL = {
 const SOURCE_LABEL = {
   purchase: 'Purchase', purchase_payment: 'Bill payment', production: 'Production', invoice: 'Sale',
   adjustment: 'Stock adjustment', reset: 'Stock reset', opening: 'Opening balance', manual: 'Manual',
-}
-
-// ── Profit & loss ────────────────────────────────────────────────────────────
-
-function periodRange(preset) {
-  const now = new Date()
-  const iso = d => d.toLocaleDateString('en-CA')
-  const y = now.getFullYear()
-  const m = now.getMonth()
-  switch (preset) {
-    case 'last_month': return [iso(new Date(y, m - 1, 1)), iso(new Date(y, m, 0))]
-    case 'last_3': return [iso(new Date(y, m - 2, 1)), today()]
-    case 'this_year': return [`${y}-01-01`, today()]
-    default: return [iso(new Date(y, m, 1)), today()]
-  }
-}
-
-function ProfitAndLoss() {
-  const [preset, setPreset] = useState('this_month')
-  const [range, setRange] = useState(() => periodRange('this_month'))
-  const [report, setReport] = useState(null)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    setError('')
-    apiFetch(`/api/accounting/pnl?from=${range[0]}&to=${range[1]}`).then(jsonOrThrow).then(setReport).catch(e => setError(e.message))
-  }, [range])
-
-  function choose(p) {
-    setPreset(p)
-    if (p !== 'custom') setRange(periodRange(p))
-  }
-
-  const months = report && report.months.length > 1 && report.months.length <= 12 ? report.months : []
-  const cols = [...months, 'total']
-  const cell = (acc, col) => (col === 'total' ? acc.total : acc.by_month[col] || 0)
-  const tot = (key, col) => (col === 'total' ? report.totals[key] : report.totals.by_month[col][key])
-
-  const SectionRows = ({ type, totalKey, totalLabel }) => (
-    <>
-      <tr className="bg-white/30"><td colSpan={cols.length + 1} className="px-4 pt-3 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">{TYPE_LABEL[type]}</td></tr>
-      {report.sections[type].length === 0 && (
-        <tr><td colSpan={cols.length + 1} className="px-6 py-1.5 text-gray-400 text-xs">Nothing recorded</td></tr>
-      )}
-      {report.sections[type].map(a => (
-        <tr key={a.id}>
-          <td className="px-6 py-1.5 text-gray-700">{a.name}</td>
-          {cols.map(c => <td key={c} className="px-4 py-1.5 text-right text-gray-600 whitespace-nowrap">{rpSigned(cell(a, c))}</td>)}
-        </tr>
-      ))}
-      <tr className="border-t border-white/60">
-        <td className="px-4 py-2 font-semibold text-gray-700">{totalLabel}</td>
-        {cols.map(c => <td key={c} className="px-4 py-2 text-right font-semibold text-gray-800 whitespace-nowrap">{rpSigned(tot(totalKey, c))}</td>)}
-      </tr>
-    </>
-  )
-
-  const ProfitRow = ({ label, k, strong }) => (
-    <tr className={strong ? 'bg-indigo-50/70' : 'bg-white/20'}>
-      <td className={`px-4 py-2.5 ${strong ? 'font-bold text-gray-900' : 'font-semibold text-gray-800'}`}>{label}</td>
-      {cols.map(c => {
-        const v = tot(k, c)
-        const rev = tot('revenue', c)
-        return (
-          <td key={c} className={`px-4 py-2.5 text-right whitespace-nowrap ${strong ? 'font-bold' : 'font-semibold'} ${v < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
-            {rpSigned(v)}
-            {rev > 0 && <span className="block text-[11px] font-normal text-gray-400">{((v / rev) * 100).toFixed(1)}% of revenue</span>}
-          </td>
-        )
-      })}
-    </tr>
-  )
-
-  return (
-    <div>
-      <div className="flex flex-wrap items-end gap-3 mb-4 print:hidden">
-        <div>
-          <label className={labelCls}>Period</label>
-          <select value={preset} onChange={e => choose(e.target.value)} className={inputCls}>
-            <option value="this_month">This month</option>
-            <option value="last_month">Last month</option>
-            <option value="last_3">Last 3 months</option>
-            <option value="this_year">This year</option>
-            <option value="custom">Custom…</option>
-          </select>
-        </div>
-        {preset === 'custom' && (
-          <>
-            <div><label className={labelCls}>From</label><input type="date" value={range[0]} onChange={e => setRange([e.target.value, range[1]])} className={inputCls} /></div>
-            <div><label className={labelCls}>To</label><input type="date" value={range[1]} onChange={e => setRange([range[0], e.target.value])} className={inputCls} /></div>
-          </>
-        )}
-        <button onClick={() => window.print()} className={`${secondaryBtn} ml-auto`}>Print</button>
-      </div>
-      <Alert onClose={() => setError('')}>{error}</Alert>
-
-      {report && (
-        <div className="glass-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-white/50">
-            <p className="font-semibold text-gray-800">Profit & Loss</p>
-            <p className="text-xs text-gray-500">{report.from} to {report.to}</p>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/60">
-                <th className={`${thCls} text-left`}></th>
-                {cols.map(c => <th key={c} className={`${thCls} text-right`}>{c === 'total' ? 'Total' : monthLabel(c)}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              <SectionRows type="revenue" totalKey="revenue" totalLabel="Total revenue" />
-              <SectionRows type="cogs" totalKey="cogs" totalLabel="Total cost of goods sold" />
-              <ProfitRow label="Gross profit" k="gross_profit" />
-              <SectionRows type="expense" totalKey="expense" totalLabel="Total expenses" />
-              <ProfitRow label="Net profit" k="net_profit" strong />
-            </tbody>
-          </table>
-          <p className="px-4 py-3 text-xs text-gray-400 border-t border-white/50">
-            Cost of goods sold is the FIFO cost of what was sold, plus stock written off or found in adjustments and counts.
-            Purchases of stock are not costs until the stock is used and sold.
-          </p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── Balance sheet ────────────────────────────────────────────────────────────
-
-function BalanceSheet() {
-  const [date, setDate] = useState(today())
-  const [report, setReport] = useState(null)
-  useEffect(() => { apiFetch(`/api/accounting/balance-sheet?date=${date}`).then(r => r.json()).then(setReport) }, [date])
-
-  const Section = ({ type, total }) => (
-    <>
-      <tr className="bg-white/30"><td colSpan={2} className="px-4 pt-3 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">{TYPE_LABEL[type]}</td></tr>
-      {report.sections[type].map(a => (
-        <tr key={a.id ?? a.name}>
-          <td className="px-6 py-1.5 text-gray-700">{a.name}</td>
-          <td className="px-4 py-1.5 text-right text-gray-600">{rpSigned(a.balance)}</td>
-        </tr>
-      ))}
-      <tr className="border-t border-white/60">
-        <td className="px-4 py-2 font-semibold text-gray-700">Total {TYPE_LABEL[type].toLowerCase()}</td>
-        <td className="px-4 py-2 text-right font-semibold text-gray-800">{rpSigned(total)}</td>
-      </tr>
-    </>
-  )
-
-  return (
-    <div>
-      <div className="flex items-end gap-3 mb-4">
-        <div><label className={labelCls}>As of</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className={inputCls} /></div>
-      </div>
-      {report && (
-        <div className="glass-card overflow-hidden max-w-2xl">
-          <table className="w-full text-sm">
-            <tbody>
-              <Section type="asset" total={report.totals.assets} />
-              <Section type="liability" total={report.totals.liabilities} />
-              <Section type="equity" total={report.totals.equity} />
-              <tr className="bg-indigo-50/70">
-                <td className="px-4 py-2.5 font-bold text-gray-900">Liabilities + equity</td>
-                <td className="px-4 py-2.5 text-right font-bold text-gray-900">{rpSigned(report.totals.liabilities_and_equity)}</td>
-              </tr>
-            </tbody>
-          </table>
-          <p className={`px-4 py-3 text-xs border-t border-white/50 ${report.totals.balanced ? 'text-emerald-600' : 'text-red-600'}`}>
-            {report.totals.balanced ? '✓ Assets equal liabilities + equity' : 'Books do not balance. Check the journal.'}
-            {report.sections.asset.some(a => a.name === 'Cash' && a.balance < 0) && (
-              <span className="block text-amber-700 mt-1">Cash is negative: record the money you started with as “Owner puts in capital” in the Journal tab.</span>
-            )}
-          </p>
-        </div>
-      )}
-    </div>
-  )
+  expense: 'Expense', expense_payment: 'Expense payment', pos_sale: 'Café sale',
 }
 
 // ── Journal ──────────────────────────────────────────────────────────────────
@@ -279,7 +102,7 @@ function EntryForm({ accounts, onSaved, onCancel }) {
           </div>
           <div>
             <label className={labelCls}>Amount (Rp)</label>
-            <input type="number" step="any" min="0" value={amount} onChange={e => setAmount(e.target.value)} className={inputCls} required />
+            <MoneyInput value={amount} onChange={setAmount} required />
           </div>
         </div>
       ) : (
@@ -294,8 +117,8 @@ function EntryForm({ accounts, onSaved, onCancel }) {
                   </optgroup>
                 ))}
               </select>
-              <input type="number" step="any" min="0" placeholder="Debit" value={l.debit} onChange={e => setLine(i, { debit: e.target.value, credit: '' })} className={inputCls} />
-              <input type="number" step="any" min="0" placeholder="Credit" value={l.credit} onChange={e => setLine(i, { credit: e.target.value, debit: '' })} className={inputCls} />
+              <MoneyInput placeholder="Debit" value={l.debit} onChange={v => setLine(i, { debit: v, credit: '' })} />
+              <MoneyInput placeholder="Credit" value={l.credit} onChange={v => setLine(i, { credit: v, debit: '' })} />
               {lines.length > 2 ? <button type="button" onClick={() => setLines(ls => ls.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500">×</button> : <span />}
             </div>
           ))}
@@ -406,18 +229,21 @@ function Journal({ accounts }) {
 // ── Chart of accounts ────────────────────────────────────────────────────────
 
 function Accounts({ accounts, reload }) {
-  const [form, setForm] = useState({ code: '', name: '', type: 'expense' })
+  const [form, setForm] = useState({ name: '', type: 'expense' })
   const [error, setError] = useState('')
+  const [added, setAdded] = useState('')
   const [editing, setEditing] = useState(null)
 
   async function add(e) {
     e.preventDefault()
     setError('')
+    setAdded('')
     try {
-      await jsonOrThrow(await apiFetch('/api/accounting/accounts', {
+      const account = await jsonOrThrow(await apiFetch('/api/accounting/accounts', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
       }))
-      setForm({ code: '', name: '', type: form.type })
+      setForm({ name: '', type: form.type })
+      setAdded(`Added ${account.code} ${account.name}`)
       reload()
     } catch (err) { setError(err.message) }
   }
@@ -437,8 +263,8 @@ function Accounts({ accounts, reload }) {
       <div className="glass-card p-4 sm:p-6 mb-5">
         <SectionTitle className="mb-4">Add Account</SectionTitle>
         <Alert onClose={() => setError('')}>{error}</Alert>
-        <form onSubmit={add} className="grid grid-cols-1 sm:grid-cols-[6rem_1fr_12rem_auto] gap-3 items-end">
-          <div><label className={labelCls}>Code</label><input value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className={inputCls} placeholder="6600" required /></div>
+        <Alert kind="success" onClose={() => setAdded('')}>{added}</Alert>
+        <form onSubmit={add} className="grid grid-cols-1 sm:grid-cols-[1fr_12rem_auto] gap-3 items-end">
           <div><label className={labelCls}>Name</label><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className={inputCls} placeholder="e.g. Marketing" required /></div>
           <div>
             <label className={labelCls}>Type</label>
@@ -448,13 +274,17 @@ function Accounts({ accounts, reload }) {
           </div>
           <button type="submit" className="btn-primary px-5 py-2">Add</button>
         </form>
+        <p className="mt-3 text-xs text-gray-500">
+          Account numbers are 6 digits and given automatically. The first digit is the type: 1 assets, 2 liabilities,
+          3 equity, 4 revenue, 5 cost of goods sold, 6 expenses.
+        </p>
       </div>
 
       <div className="glass-card overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-white/30 border-b border-white/60">
-              <th className={`${thCls} text-left w-20`}>Code</th>
+              <th className={`${thCls} text-left w-24`}>No.</th>
               <th className={`${thCls} text-left`}>Account</th>
               <th className={`${thCls} text-right`}>Balance</th>
               <th className="px-4 py-3 w-40"></th>
@@ -466,11 +296,16 @@ function Accounts({ accounts, reload }) {
                 <tr className="bg-white/30"><td colSpan={4} className="px-4 pt-3 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">{TYPE_LABEL[type]}</td></tr>
                 {accounts.filter(a => a.type === type).map(a => (
                   <tr key={a.id} className={`border-t border-white/40 ${a.active ? '' : 'opacity-50'}`}>
-                    <td className="px-4 py-2 text-gray-500">{a.code}</td>
+                    <td className="px-4 py-2 text-gray-500 tabular-nums">
+                      {editing?.id === a.id ? (
+                        <input value={editing.code} onChange={e => setEditing({ ...editing, code: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                          className="glass-input px-2 py-1 text-sm w-20 tabular-nums" inputMode="numeric" aria-label="Account number" />
+                      ) : a.code}
+                    </td>
                     <td className="px-4 py-2 text-gray-800">
                       {editing?.id === a.id ? (
                         <input autoFocus value={editing.name} onChange={e => setEditing({ ...editing, name: e.target.value })}
-                          onKeyDown={e => { if (e.key === 'Enter') patch(a, { name: editing.name }); if (e.key === 'Escape') setEditing(null) }}
+                          onKeyDown={e => { if (e.key === 'Enter') patch(a, { name: editing.name, code: editing.code }); if (e.key === 'Escape') setEditing(null) }}
                           className="glass-input px-2 py-1 text-sm w-full" />
                       ) : a.name}
                       {a.system_key && <span className="ml-2 text-[11px] text-gray-400" title="Posted to automatically by the app">auto</span>}
@@ -478,9 +313,9 @@ function Accounts({ accounts, reload }) {
                     <td className="px-4 py-2 text-right text-gray-700 whitespace-nowrap">{rpSigned(a.balance)}</td>
                     <td className="px-4 py-2 text-right whitespace-nowrap">
                       {editing?.id === a.id ? (
-                        <button onClick={() => patch(a, { name: editing.name })} className="text-xs text-indigo-600 font-medium">Save</button>
+                        <button onClick={() => patch(a, { name: editing.name, code: editing.code })} className="text-xs text-indigo-600 font-medium">Save</button>
                       ) : (
-                        <button onClick={() => setEditing({ id: a.id, name: a.name })} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium">Rename</button>
+                        <button onClick={() => setEditing({ id: a.id, name: a.name, code: a.code })} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium">Edit</button>
                       )}
                       {!a.system_key && (
                         <button onClick={() => patch(a, { active: !a.active })} className="ml-3 text-xs text-gray-500 hover:text-gray-800">
@@ -500,24 +335,20 @@ function Accounts({ accounts, reload }) {
 }
 
 export default function Accounting() {
-  const [tab, setTab] = useState('pnl')
+  const [tab, setTab] = useState('journal')
   const [accounts, setAccounts] = useState([])
   const loadAccounts = () => apiFetch('/api/accounting/accounts').then(r => r.json()).then(setAccounts)
   useEffect(() => { loadAccounts() }, [tab])
 
   const tabs = useMemo(() => [
-    { value: 'pnl', label: 'Profit & Loss' },
-    { value: 'balance', label: 'Balance Sheet' },
     { value: 'journal', label: 'Journal' },
-    { value: 'accounts', label: 'Accounts' },
+    { value: 'accounts', label: 'Chart of Accounts' },
   ], [])
 
   return (
     <div className="max-w-6xl mx-auto">
-      <PageHeader title="Accounting" subtitle="Purchases, production, sales and stock corrections are booked automatically" />
+      <PageHeader title="Accounting" subtitle="Purchases, expenses, production, sales and stock corrections are booked automatically. Reports are under Reports." />
       <div className="print:hidden"><Tabs tabs={tabs} value={tab} onChange={setTab} /></div>
-      {tab === 'pnl' && <ProfitAndLoss />}
-      {tab === 'balance' && <BalanceSheet />}
       {tab === 'journal' && <Journal accounts={accounts} />}
       {tab === 'accounts' && <Accounts accounts={accounts} reload={loadAccounts} />}
     </div>
