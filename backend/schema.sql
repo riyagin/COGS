@@ -438,7 +438,6 @@ CREATE TABLE IF NOT EXISTS pos_sales (
   source_updated_at  BIGINT NOT NULL DEFAULT 0,            -- tablet's updatedAt (epoch ms): the sync watermark
   content_hash       TEXT NOT NULL,
   synced_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  synced_by          INTEGER REFERENCES users(id),
   UNIQUE (source, external_id)
 );
 
@@ -470,7 +469,6 @@ CREATE TABLE IF NOT EXISTS expenses (
   reference             TEXT,
   paid_date             TEXT,
   paid_from_account_id  INTEGER REFERENCES accounts(id),
-  created_by            INTEGER REFERENCES users(id),
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -533,6 +531,8 @@ ALTER TABLE stock_adjustments ADD COLUMN IF NOT EXISTS created_by INTEGER REFERE
 ALTER TABLE purchases         ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id);
 ALTER TABLE journal_entries   ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id);
 ALTER TABLE recipe_versions   ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id);
+ALTER TABLE expenses          ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id);
+ALTER TABLE pos_sales         ADD COLUMN IF NOT EXISTS synced_by  INTEGER REFERENCES users(id);
 
 -- ── Opening balance ──────────────────────────────────────────────────────────
 -- When bookkeeping starts on a database that already holds stock, book that stock's value

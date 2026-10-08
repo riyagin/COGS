@@ -60,8 +60,14 @@ A JSON view of the same data is served by the app (`/api/*` on the deployed site
 | `GET /api/adjustments` | last 200 adjustments |
 | `GET /api/accounting/accounts` | chart of accounts with balances |
 | `GET /api/accounting/journal?from=&to=&account_id=&source_type=` | journal entries with lines (capped at 500) |
-| `GET /api/accounting/pnl?from=&to=` | profit & loss, per account and per month |
+| `GET /api/reports/pnl?from=&to=&group=` | profit & loss per account; `group` = `day` \| `week` \| `month` \| `total` (`/api/accounting/pnl` is the same) |
+| `GET /api/reports/sales?from=&to=&group=` | café POS + invoice sales by period, product and payment method |
+| `GET /api/reports/expenses?from=&to=&group=` | expense and COGS accounts by period, plus stock bought |
 | `GET /api/accounting/balance-sheet?date=` | balance sheet as of a date |
+| `GET /api/expenses?from=&to=&account_id=&status=unpaid` | other expenses (rent, wages, …) |
+| `GET /api/pos/sales?from=&to=` / `GET /api/pos/status` | café sales pushed from KSK Desktop, and how far the push has got |
+
+Reports also take `format=csv`. Weeks run Monday to Sunday and are keyed by their Monday.
 
 Direct SQL is preferred for analysis; several API lists are capped and the API requires
 the server to be running.
@@ -83,6 +89,8 @@ cost; with auto-produce, missing preprocessed ingredients are made first as chil
 **invoice** sells products, consuming their component items FIFO. **Adjustments** and
 **opname** (physical counts) reconcile stock to reality. Every one of those movements also
 posts a balanced **journal entry**, so the books (and the P&L) follow stock automatically.
+**Café sales** from the KSK POS arrive in `pos_sales` (pushed by KSK Desktop) and post revenue
+only; **expenses** that aren't stock (rent, wages, utilities) are recorded in `expenses`.
 
 ```
 items ──< inventory_items (lots) >── purchase_lines >── purchases
@@ -237,11 +245,34 @@ Audit log of manual corrections and physical counts; the stock change itself is 
 
 ### `accounts`
 
-Chart of accounts. `code` (UNIQUE), `name`, `type` (`asset` | `liability` | `equity` |
-`revenue` | `cogs` | `expense`), `system_key` (set on the accounts the app posts to:
-`cash`, `bank`, `receivable`, `inventory_raw`, `inventory_preprocessed`, `inventory_final`,
-`payable`, `tax_payable`, `capital`, `opening_balance`, `sales`, `sales_discounts`, `cogs`,
-`inventory_adjustments`, `expense_general`), `active`.
+Chart of accounts. `code` (UNIQUE, **6 digits**, checked by `accounts_code_six_digits`), `name`,
+`type` (`asset` | `liability` | `equity` | `revenue` | `cogs` | `expense`), `system_key` (set
+on the accounts the app posts to: `cash`, `bank`, `receivable`, `inventory_raw`,
+`inventory_preprocessed`, `inventory_final`, `payable`, `tax_payable`, `capital`,
+`opening_balance`, `sales`, `sales_pos`, `sales_discounts`, `cogs`, `inventory_adjustments`,
+`expense_general`), `active`.
+
+The first digit of the code is the type: 1 asset, 2 liability, 3 equity, 4 revenue, 5 COGS,
+6 expense (`100000` Cash, `410000` Sales - café, `630000` Rent). New accounts get the roundest
+free code of their type (`ledger.nextAccountCode`). Codes were 4 digits before 2026-10-08; the
+migration appended `00`.
+
+### `expenses`
+
+Spending that isn't stock. `date`, `account_id` (an `expense` or `cogs` account = the
+category), `amount`, `payee`, `description`, `reference`, `paid_date` (**NULL = unpaid**),
+`paid_from_account_id` (cash or bank), `created_by`.
+
+### `pos_sales` / `pos_sale_lines`
+
+Café sales pushed from KSK Desktop (`POST /api/pos/sync`), copied from the counter tablet.
+`pos_sales`: `source` (`ksk`), `external_id` (the tablet's sale number; UNIQUE with source),
+`business_day` (`YYYY-MM-DD`, the café's trading day), `closed_at`, `status` (`PAID` |
+`VOID`), whole-rupiah `gross` (price × qty), `discount` (line + order), `rounding`, `tax`
+(included in total), `total` (paid), `payments` (JSONB `[{ method, kind, amount }]`),
+`source_updated_at` (tablet `updatedAt`, epoch ms: the push watermark), `content_hash`.
+`pos_sale_lines`: name/price **snapshots** from the tablet (`product_name`, `category`, `qty`,
+`unit_price`, `discount`, `line_total`). Selling on the POS moves no stock here.
 
 ### `journal_entries` / `journal_lines`
 
@@ -258,9 +289,13 @@ Double-entry journal. `journal_entries`: `date`, `memo`, `source_type`, `source_
 | `invoice` | sale | Dr cash/bank/receivable, Dr sales discounts / Cr sales, Cr tax; Dr COGS / Cr inventory |
 | `adjustment` | adjustment or opname | inventory ↔ Inventory adjustments & waste |
 | `reset` | `npm run stock:reset` | Dr Inventory adjustments & waste / Cr inventory |
+| `expense` | expense | Dr expense account / Cr cash, bank or payable |
+| `expense_payment` | paying an unpaid expense | Dr payable / Cr cash or bank |
+| `pos_sale` | café sale pushed from KSK Desktop (PAID only) | Dr cash (Tunai) / bank (QRIS, transfer), Dr sales discounts / Cr Sales - café, Cr tax |
 | `manual` | Accounting page | anything |
 
-Deleting a purchase or invoice deletes the entries it posted.
+Deleting a purchase, invoice or expense deletes the entries it posted; a café sale that turns
+VOID loses its entry the next time it is pushed.
 
 ---
 
