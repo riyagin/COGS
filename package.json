@@ -2,10 +2,12 @@
   "name": "cogs-calculator",
   "version": "1.0.0",
   "scripts": {
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install && cd ../desktop && npm install",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm run dev"
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:desktop": "cd desktop && npm run dev",
+    "dist:desktop": "cd desktop && npm run dist"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
