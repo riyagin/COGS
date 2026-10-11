@@ -51,6 +51,8 @@ export const monthLabel = ym => {
 
 export const TIERS = ['raw', 'preprocessed', 'final']
 
+export const UNIT_TYPES = ['g', 'kg', 'mL', 'L', 'piece', 'pack', 'box', 'bag', 'bottle', 'can', 'sheet', 'dozen', 'tbsp', 'tsp', 'cup']
+
 export const TIER_LABEL = {
   raw: 'Raw material',
   preprocessed: 'Preprocessed',

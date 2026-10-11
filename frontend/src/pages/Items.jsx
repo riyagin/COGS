@@ -1,9 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { apiFetch } from '../lib/api'
-import { qty, rp, unitRp, TIERS, TIER_LABEL, TIER_HINT } from '../lib/format'
+import { qty, rp, unitRp, TIERS, TIER_LABEL, TIER_HINT, UNIT_TYPES } from '../lib/format'
 import { Alert, TierBadge, PageHeader, SectionTitle, Tabs, inputCls, labelCls, thCls, jsonOrThrow } from '../components/ui'
-
-const UNIT_TYPES = ['g', 'kg', 'mL', 'L', 'piece', 'pack', 'box', 'bag', 'bottle', 'can', 'sheet', 'dozen', 'tbsp', 'tsp', 'cup']
 
 function EditRow({ item, onSaved, onCancel }) {
   const [form, setForm] = useState({ name: item.name, unit_type: item.unit_type, tier: item.tier })

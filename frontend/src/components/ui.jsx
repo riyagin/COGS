@@ -31,11 +31,12 @@ export function TierBadge({ tier, short }) {
 
 // <select> of items grouped by tier. `tiers` limits which tiers are offered;
 // `stock` (optional) is a Map id -> quantity shown next to each name.
-export function ItemSelect({ items, value, onChange, tiers = TIERS, stock, placeholder = 'Select item', className = '', required = true, exclude = [] }) {
+// `onNew` (optional) adds a "+ New item…" choice that calls it instead of onChange.
+export function ItemSelect({ items, value, onChange, onNew, tiers = TIERS, stock, placeholder = 'Select item', className = '', required = true, exclude = [] }) {
   return (
     <select
       value={value}
-      onChange={e => onChange(e.target.value)}
+      onChange={e => (e.target.value === NEW_ITEM ? onNew() : onChange(e.target.value))}
       className={`w-full glass-input px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400/60 ${className}`}
       required={required}
     >
@@ -53,9 +54,12 @@ export function ItemSelect({ items, value, onChange, tiers = TIERS, stock, place
           </optgroup>
         )
       })}
+      {onNew && <option value={NEW_ITEM}>+ New item…</option>}
     </select>
   )
 }
+
+const NEW_ITEM = '__new__'
 
 export function PageHeader({ title, subtitle, children }) {
   return (

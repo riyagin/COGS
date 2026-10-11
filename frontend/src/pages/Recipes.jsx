@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { apiFetch, apiDownload } from '../lib/api'
-import { num, qty, rp, unitRp, dateTime, shortDate } from '../lib/format'
+import { num, qty, rp, unitRp, dateTime, shortDate, TIER_LABEL, TIER_HINT, UNIT_TYPES } from '../lib/format'
 import { Alert, ItemSelect, TierBadge, PageHeader, SectionTitle, Tabs, inputCls, labelCls, secondaryBtn, jsonOrThrow } from '../components/ui'
 
 // Steps are stored one per line
@@ -17,10 +17,68 @@ function AutoTextarea({ value, onChange, className = '', ...props }) {
   return <textarea ref={ref} value={value} onChange={e => onChange(e.target.value)} className={`${inputCls} resize-none leading-relaxed ${className}`} {...props} />
 }
 
+// An item dropdown that can also register a new item on the spot, so a recipe can be
+// written before its ingredients or output are on the Items page
+function ItemField({ tiers, onChange, onCreated, ...props }) {
+  const [draft, setDraft] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const close = () => { setDraft(null); setError('') }
+
+  async function create() {
+    if (!draft.name.trim() || !draft.unit_type) return setError('Name and unit are needed')
+    setBusy(true)
+    setError('')
+    try {
+      const item = await jsonOrThrow(await apiFetch('/api/items', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft),
+      }))
+      onCreated(item)
+      onChange(String(item.id))
+      close()
+    } catch (err) { setError(err.message) } finally { setBusy(false) }
+  }
+
+  if (!draft) {
+    return <ItemSelect {...props} tiers={tiers} onChange={onChange} onNew={() => setDraft({ name: '', unit_type: '', tier: tiers[0] })} />
+  }
+  return (
+    <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-2 space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <input
+          autoFocus value={draft.name} placeholder="New item name" onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); create() }
+            if (e.key === 'Escape') close()
+          }}
+          className={`${inputCls} flex-1 min-w-[9rem]`}
+        />
+        <select value={draft.unit_type} onChange={e => setDraft(d => ({ ...d, unit_type: e.target.value }))} className="glass-input px-2 py-2 text-sm">
+          <option value="">Unit</option>
+          {UNIT_TYPES.map(u => <option key={u} value={u}>{u}</option>)}
+        </select>
+        {tiers.length > 1 && (
+          <select value={draft.tier} onChange={e => setDraft(d => ({ ...d, tier: e.target.value }))} className="glass-input px-2 py-2 text-sm">
+            {tiers.map(t => <option key={t} value={t}>{TIER_LABEL[t]}</option>)}
+          </select>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <button type="button" onClick={create} disabled={busy} className="font-semibold text-indigo-600 hover:text-indigo-800 py-1 disabled:opacity-50">
+          {busy ? 'Adding...' : 'Add item'}
+        </button>
+        <button type="button" onClick={close} className="text-gray-500 hover:text-gray-700 py-1">Cancel</button>
+        {error ? <span className="text-red-600">{error}</span> : <span className="text-gray-400">{TIER_HINT[draft.tier]}</span>}
+      </div>
+    </div>
+  )
+}
+
 const emptyIngredient = () => ({ item_id: '', quantity_per_batch: '' })
 const emptySection = (withIngredient = false) => ({ title: '', instructions: '', items: withIngredient ? [emptyIngredient()] : [] })
 
-function RecipeForm({ items, recipe, initialData, onSave, onCancel }) {
+function RecipeForm({ items, recipe, initialData, onSave, onCancel, onItemCreated }) {
   const [form, setForm] = useState(() => {
     const source = recipe || initialData
     if (source) {
@@ -101,9 +159,9 @@ function RecipeForm({ items, recipe, initialData, onSave, onCancel }) {
         </div>
         <div>
           <label className={labelCls}>Makes</label>
-          <ItemSelect
+          <ItemField
             items={items} value={form.output_item_id} tiers={['preprocessed', 'final']} placeholder="Select output"
-            onChange={v => setForm(f => ({ ...f, output_item_id: v }))}
+            onChange={v => setForm(f => ({ ...f, output_item_id: v }))} onCreated={onItemCreated}
           />
         </div>
         <div>
@@ -116,7 +174,7 @@ function RecipeForm({ items, recipe, initialData, onSave, onCancel }) {
         </div>
       </div>
       <p className="-mt-3 text-xs text-gray-500">
-        Recipes make preprocessed items (used in other recipes) or final goods. Missing one? Add it on the Items page with the right tier.
+        Recipes make preprocessed items (used in other recipes) or final goods. Not on the list yet? Pick “+ New item…” to add it here.
       </p>
 
       <div>
@@ -163,10 +221,10 @@ function RecipeForm({ items, recipe, initialData, onSave, onCancel }) {
                   return (
                     <div key={iIdx} className="flex gap-2 items-center">
                       <div className="flex-1 min-w-0">
-                        <ItemSelect
+                        <ItemField
                           items={items} value={row.item_id} tiers={['raw', 'preprocessed']} placeholder="Select ingredient"
                           exclude={output ? [output.id] : []}
-                          onChange={v => updateIngredient(sIdx, iIdx, 'item_id', v)}
+                          onChange={v => updateIngredient(sIdx, iIdx, 'item_id', v)} onCreated={onItemCreated}
                         />
                       </div>
                       <input
@@ -539,6 +597,8 @@ export default function Recipes() {
     apiFetch('/api/items').then(r => r.json()).then(setItems)
   }, [])
 
+  const addItem = item => setItems(prev => [...prev, item])
+
   async function handleEdit(id) {
     const full = await apiFetch(`/api/recipes/${id}`).then(r => r.json())
     setEditingRecipe(full)
@@ -594,6 +654,7 @@ export default function Recipes() {
             items={items}
             initialData={copySource}
             onSave={handleSave}
+            onItemCreated={addItem}
             onCancel={() => { setShowForm(false); setCopySource(null) }}
           />
         </div>
@@ -604,7 +665,7 @@ export default function Recipes() {
           <SectionTitle className="mb-4 !text-indigo-600">
             New version of {editingRecipe.name} <span className="normal-case font-normal text-gray-500">(now on version {editingRecipe.version_no})</span>
           </SectionTitle>
-          <RecipeForm items={items} recipe={editingRecipe} onSave={handleSave} onCancel={() => setEditingRecipe(null)} />
+          <RecipeForm items={items} recipe={editingRecipe} onSave={handleSave} onCancel={() => setEditingRecipe(null)} onItemCreated={addItem} />
         </div>
       )}
 
