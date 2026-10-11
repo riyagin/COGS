@@ -278,6 +278,35 @@ BEGIN
   END IF;
 END $$;
 
+-- ── Recipe documents ─────────────────────────────────────────────────────────
+-- A version reads like a written recipe: an introduction (description), then sections in
+-- order (e.g. "Filling", "Kulit", "Assembly"), each with its own ingredients and steps
+-- (instructions: one step per line). Sections belong to one version, so every version
+-- keeps the text it was saved with. The same item may appear in several sections.
+ALTER TABLE recipe_versions ADD COLUMN IF NOT EXISTS description TEXT;
+
+CREATE TABLE IF NOT EXISTS recipe_sections (
+  id            SERIAL PRIMARY KEY,
+  version_id    INTEGER NOT NULL REFERENCES recipe_versions(id) ON DELETE CASCADE,
+  position      INTEGER NOT NULL,
+  title         TEXT,
+  instructions  TEXT,
+  UNIQUE (version_id, position)
+);
+
+ALTER TABLE recipe_items ADD COLUMN IF NOT EXISTS section_id INTEGER REFERENCES recipe_sections(id) ON DELETE CASCADE;
+
+-- Versions saved before sections existed get one untitled section holding their ingredients
+INSERT INTO recipe_sections (version_id, position)
+SELECT v.id, 0 FROM recipe_versions v
+WHERE NOT EXISTS (SELECT 1 FROM recipe_sections s WHERE s.version_id = v.id);
+
+UPDATE recipe_items ri SET section_id = s.id
+FROM recipe_sections s
+WHERE ri.section_id IS NULL AND s.version_id = ri.version_id AND s.position = 0;
+
+ALTER TABLE recipe_items ALTER COLUMN section_id SET NOT NULL;
+
 -- ── Purchasing ───────────────────────────────────────────────────────────────
 -- One purchase = one receipt from a supplier. Lines are either stock (item_id: adds a lot)
 -- or a straight expense (account_id). Paid now from cash/bank, or left unpaid (payable)
@@ -566,6 +595,7 @@ CREATE INDEX IF NOT EXISTS recipes_output_item_id_idx                ON recipes 
 CREATE INDEX IF NOT EXISTS recipe_items_recipe_id_idx                ON recipe_items (recipe_id);
 CREATE INDEX IF NOT EXISTS recipe_items_item_id_idx                  ON recipe_items (item_id);
 CREATE INDEX IF NOT EXISTS recipe_items_version_id_idx               ON recipe_items (version_id);
+CREATE INDEX IF NOT EXISTS recipe_items_section_id_idx               ON recipe_items (section_id);
 CREATE INDEX IF NOT EXISTS recipe_versions_output_item_id_idx        ON recipe_versions (output_item_id);
 CREATE INDEX IF NOT EXISTS recipe_versions_created_by_idx            ON recipe_versions (created_by);
 CREATE INDEX IF NOT EXISTS recipes_current_version_id_idx            ON recipes (current_version_id);

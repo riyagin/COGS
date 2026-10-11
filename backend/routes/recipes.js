@@ -6,11 +6,12 @@ const { loadBook, findCycle, loadLastPrices, standardCosts, recipeTree, primaryR
 const { Document, Packer, Paragraph, HeadingLevel, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, ShadingType } = require('docx');
 
 // Recipes are versioned: the name stays, every edit saves a new version of the contents
-// (output, yield, ingredients) stamped with who saved it and when. The recipe row mirrors
-// its current version; older versions stay in recipe_versions with their own ingredients.
+// (output, yield, description, sections with their ingredients and steps) stamped with who
+// saved it and when. The recipe row mirrors its current version; older versions stay in
+// recipe_versions with their own sections and ingredients.
 const RECIPE_SELECT = `
   SELECT r.*, i.name AS output_item_name, i.unit_type, i.tier,
-         v.version_no, v.note AS version_note, v.created_at AS updated_at,
+         v.version_no, v.note AS version_note, v.description, v.created_at AS updated_at,
          COALESCE(u.name, u.username) AS updated_by_name,
          (SELECT COUNT(*) FROM recipe_versions x WHERE x.recipe_id = r.id)::int AS version_count
   FROM recipes r
@@ -19,20 +20,36 @@ const RECIPE_SELECT = `
   LEFT JOIN users u ON u.id = v.created_by
 `;
 
+// Ingredients in the order they were written
 const VERSION_ITEMS = `
   SELECT ri.*, i.name AS item_name, i.unit_type, i.tier
   FROM recipe_items ri
   JOIN items i ON ri.item_id = i.id
   WHERE ri.version_id = ANY($1::int[])
-  ORDER BY CASE i.tier WHEN 'preprocessed' THEN 0 WHEN 'final' THEN 1 ELSE 2 END, i.name
+  ORDER BY ri.id
 `;
 
-// Current version with its ingredients. q is db or a transaction handle
+// Sections (with their ingredients) of several versions: Map versionId -> sections in order,
+// plus every ingredient row. q is db or a transaction handle.
+async function loadSections(q, versionIds) {
+  const sections = await q.query(
+    'SELECT * FROM recipe_sections WHERE version_id = ANY($1::int[]) ORDER BY version_id, position',
+    [versionIds]
+  );
+  const items = await q.query(VERSION_ITEMS, [versionIds]);
+  const bySection = new Map(sections.map(s => [s.id, { ...s, items: [] }]));
+  for (const i of items) bySection.get(i.section_id)?.items.push(i);
+  const byVersion = new Map(versionIds.map(id => [id, []]));
+  for (const s of bySection.values()) byVersion.get(s.version_id)?.push(s);
+  return { byVersion, items };
+}
+
+// Current version with its sections and (flat) ingredients
 async function getRecipeWithItems(q, id) {
   const recipe = await q.one(`${RECIPE_SELECT} WHERE r.id = $1`, [id]);
   if (!recipe) return null;
-  const items = await q.query(VERSION_ITEMS, [[recipe.current_version_id]]);
-  return { ...recipe, items };
+  const { byVersion, items } = await loadSections(q, [recipe.current_version_id]);
+  return { ...recipe, sections: byVersion.get(recipe.current_version_id), items };
 }
 
 // Every recipe with its expected cost per unit (sub-recipes rolled up) and whether it is
@@ -60,8 +77,8 @@ router.get('/:id', ah(async (req, res) => {
   res.json(recipe);
 }));
 
-// Every version, newest first, with its ingredients, who saved it, when, and how many
-// production runs used it
+// Every version, newest first, with its description, sections, ingredients, who saved it,
+// when, and how many production runs used it
 router.get('/:id/versions', ah(async (req, res) => {
   const recipe = await db.one('SELECT id, current_version_id FROM recipes WHERE id = $1', [req.params.id]);
   if (!recipe) return res.status(404).json({ error: 'Recipe not found' });
@@ -75,10 +92,11 @@ router.get('/:id/versions', ah(async (req, res) => {
     WHERE v.recipe_id = $1
     ORDER BY v.version_no DESC
   `, [recipe.id]);
-  const items = await db.query(VERSION_ITEMS, [versions.map(v => v.id)]);
+  const { byVersion, items } = await loadSections(db, versions.map(v => v.id));
   res.json(versions.map(v => ({
     ...v,
     is_current: v.id === recipe.current_version_id,
+    sections: byVersion.get(v.id),
     items: items.filter(i => i.version_id === v.id),
   })));
 }));
@@ -94,8 +112,11 @@ router.get('/:id/tree', ah(async (req, res) => {
   res.json(recipeTree(book, costOf, recipe, batches));
 }));
 
-// GET /api/recipes/:id/word — download the recipe as a .docx file, followed by the
-// recipes for each preprocessed ingredient it needs
+const steps = instructions => (instructions ? instructions.split('\n').filter(Boolean) : []);
+
+// GET /api/recipes/:id/word — download the recipe as a .docx document (description,
+// sections with ingredients and numbered steps), followed by the recipes for each
+// preprocessed ingredient it needs
 router.get('/:id/word', ah(async (req, res) => {
   const book = await loadBook(db);
   const recipe = book.recipes.get(Number(req.params.id));
@@ -104,6 +125,27 @@ router.get('/:id/word', ah(async (req, res) => {
   const tree = recipeTree(book, costOf, recipe, 1);
   const meta = await db.one(`${RECIPE_SELECT} WHERE r.id = $1`, [recipe.id]);
   const updated = new Date(meta.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
+
+  // Each preprocessed ingredient's own recipe once, in the order they are first needed
+  const subRecipes = [];
+  const seen = new Set([tree.recipe_id]);
+  const collect = node => {
+    for (const ing of node.ingredients) {
+      if (ing.sub && !seen.has(ing.sub.recipe_id)) {
+        seen.add(ing.sub.recipe_id);
+        subRecipes.push({ recipe: book.recipes.get(ing.sub.recipe_id), needed: ing.quantity, unit: ing.unit_type, parent: node.output_name });
+        collect(ing.sub);
+      }
+    }
+  };
+  collect(tree);
+
+  const versionIds = [recipe, ...subRecipes.map(s => s.recipe)].map(r => r.current_version_id);
+  const { byVersion } = await loadSections(db, versionIds);
+  const descriptions = new Map((await db.query(
+    'SELECT id, description FROM recipe_versions WHERE id = ANY($1::int[])', [versionIds]
+  )).map(v => [v.id, v.description]));
+  const hasSubRecipe = itemId => book.items.get(itemId)?.tier === 'preprocessed' && primaryRecipe(book, itemId);
 
   const cellBorder = { style: BorderStyle.SINGLE, size: 2, color: '000000' };
   const cellBorders = { top: cellBorder, bottom: cellBorder, left: cellBorder, right: cellBorder };
@@ -120,16 +162,16 @@ router.get('/:id/word', ah(async (req, res) => {
     children: [new Paragraph({ text: String(text), alignment })],
   });
 
-  const ingredientTable = node => new Table({
+  const ingredientTable = items => new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     rows: [
       new TableRow({
         tableHeader: true,
         children: [headerCell('Ingredient'), headerCell('Quantity per Batch'), headerCell('Unit')],
       }),
-      ...node.ingredients.map(ing => new TableRow({
+      ...items.map(ing => new TableRow({
         children: [
-          bodyCell(ing.sub ? `${ing.name} (see below)` : ing.name),
+          bodyCell(hasSubRecipe(ing.item_id) ? `${ing.item_name} (see below)` : ing.item_name),
           bodyCell(ing.quantity_per_batch.toFixed(2), AlignmentType.RIGHT),
           bodyCell(ing.unit_type, AlignmentType.RIGHT),
         ],
@@ -137,27 +179,36 @@ router.get('/:id/word', ah(async (req, res) => {
     ],
   });
 
-  // Each preprocessed ingredient's own recipe once, in the order they are first needed
-  const subRecipes = [];
-  const seen = new Set([tree.recipe_id]);
-  const collect = node => {
-    for (const ing of node.ingredients) {
-      if (ing.sub && !seen.has(ing.sub.recipe_id)) {
-        seen.add(ing.sub.recipe_id);
-        subRecipes.push({ node: book.recipes.get(ing.sub.recipe_id), needed: ing.quantity, unit: ing.unit_type, parent: node.output_name });
-        collect(ing.sub);
-      }
-    }
-  };
-  collect(tree);
+  const paragraphs = text => (text ? text.split('\n').map(line => new Paragraph({ text: line })) : []);
 
-  const subSections = subRecipes.flatMap(({ node, needed, unit, parent }) => {
-    const sub = recipeTree(book, costOf, node, 1);
+  // The body of one recipe: its description, then each section. An untitled section (all
+  // recipes written before sections existed) gets "Ingredients" and "Method" headings.
+  const recipeBody = (versionId, heading) => [
+    ...paragraphs(descriptions.get(versionId)),
+    ...byVersion.get(versionId).flatMap(s => {
+      const list = steps(s.instructions);
+      return [
+        new Paragraph({ text: '' }),
+        ...(s.title ? [new Paragraph({ text: s.title, heading })] : []),
+        ...(s.items.length > 0 ? [
+          ...(s.title ? [] : [new Paragraph({ text: 'Ingredients', heading })]),
+          ingredientTable(s.items),
+        ] : []),
+        ...(list.length > 0 ? [
+          ...(s.title ? (s.items.length > 0 ? [new Paragraph({ text: '' })] : []) : [new Paragraph({ text: 'Method', heading })]),
+          ...list.map((step, n) => new Paragraph({ text: `${n + 1}.\t${step}`, indent: { left: 440, hanging: 440 }, spacing: { after: 80 } })),
+        ] : []),
+      ];
+    }),
+  ];
+
+  const subSections = subRecipes.flatMap(({ recipe: sub, needed, unit, parent }) => {
+    const output = book.items.get(sub.output_item_id);
     return [
       new Paragraph({ text: '' }),
-      new Paragraph({ text: `${sub.output_name} (${sub.recipe_name})`, heading: HeadingLevel.HEADING_2 }),
-      new Paragraph({ text: `Yields ${sub.items_per_batch.toFixed(2)} ${sub.unit_type} per batch. ${parent} needs ${needed.toFixed(2)} ${unit} per batch.` }),
-      ingredientTable(sub),
+      new Paragraph({ text: `${output.name} (${sub.name})`, heading: HeadingLevel.HEADING_1 }),
+      new Paragraph({ text: `Yields ${sub.items_per_batch.toFixed(2)} ${output.unit_type} per batch. ${parent} needs ${needed.toFixed(2)} ${unit} per batch.` }),
+      ...recipeBody(sub.current_version_id, HeadingLevel.HEADING_2),
     ];
   });
 
@@ -182,6 +233,12 @@ router.get('/:id/word', ah(async (req, res) => {
           run: { font: 'Calibri', size: 40, color: '000000', bold: true },
         },
         {
+          id: 'Heading1',
+          name: 'Heading 1',
+          basedOn: 'Normal',
+          run: { font: 'Calibri', size: 34, color: '000000', bold: true },
+        },
+        {
           id: 'Heading2',
           name: 'Heading 2',
           basedOn: 'Normal',
@@ -195,8 +252,7 @@ router.get('/:id/word', ah(async (req, res) => {
         new Paragraph({ text: `Version ${meta.version_no}, updated ${updated}${meta.updated_by_name ? ` by ${meta.updated_by_name}` : ''}` }),
         new Paragraph({ text: `Yields: ${tree.items_per_batch.toFixed(2)} ${tree.unit_type} of ${tree.output_name} per batch` }),
         new Paragraph({ text: '' }),
-        new Paragraph({ text: 'Ingredients', heading: HeadingLevel.HEADING_2 }),
-        ingredientTable(tree),
+        ...recipeBody(recipe.current_version_id, HeadingLevel.HEADING_2),
         ...subSections,
       ],
     }],
@@ -210,22 +266,49 @@ router.get('/:id/word', ah(async (req, res) => {
   res.send(buffer);
 }));
 
+// Free text: line endings normalised, trailing spaces and blank edges trimmed
+function cleanText(text) {
+  const t = String(text ?? '').replace(/\r\n?/g, '\n').split('\n').map(l => l.trimEnd()).join('\n').trim();
+  return t || null;
+}
+
+// Steps: one per line, blank lines dropped, typed numbering ("1.", "2)") removed since
+// steps are numbered when shown
+function cleanSteps(text) {
+  const lines = String(text ?? '').replace(/\r\n?/g, '\n').split('\n')
+    .map(l => l.trim().replace(/^\d+[.)]\s*/, ''))
+    .filter(Boolean);
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
 // Checks a recipe against the item tiers and the other recipes:
-// output is preprocessed or final, ingredients are raw or preprocessed, no item twice,
-// and no loop (a recipe can't need, however indirectly, the thing it makes).
+// output is preprocessed or final, ingredients are raw or preprocessed, no item twice in a
+// section, and no loop (a recipe can't need, however indirectly, the thing it makes).
+// body: { output_item_id, items_per_batch, description?, sections: [{ title?, instructions?, items: [{ item_id, quantity_per_batch }] }] }
 async function validate(t, body, recipeId = null) {
-  const { output_item_id, items_per_batch, items } = body;
-  if (!output_item_id || !items || items.length === 0) {
-    throw new HttpError(400, 'Output item and at least one ingredient are required');
+  const { output_item_id, items_per_batch } = body;
+  if (!Array.isArray(body.sections)) {
+    throw new HttpError(400, 'Recipes now have sections. Please update the app (or reload the page) and try again.');
   }
+  if (!output_item_id) throw new HttpError(400, 'Output item is required');
   if (!(Number(items_per_batch) > 0)) throw new HttpError(400, 'Units made per batch must be positive');
 
-  const lines = items.map(i => ({ item_id: Number(i.item_id), quantity_per_batch: Number(i.quantity_per_batch) }));
+  const sections = body.sections
+    .map(s => ({
+      title: cleanText(s.title)?.replace(/\s+/g, ' ') ?? null,
+      instructions: cleanSteps(s.instructions),
+      items: (s.items || []).map(i => ({ item_id: Number(i.item_id), quantity_per_batch: Number(i.quantity_per_batch) })),
+    }))
+    .filter(s => s.title || s.instructions || s.items.length > 0);
+  const lines = sections.flatMap(s => s.items);
+  if (lines.length === 0) throw new HttpError(400, 'At least one ingredient is required');
   if (lines.some(l => !l.item_id || !(l.quantity_per_batch > 0))) {
     throw new HttpError(400, 'Every ingredient needs an item and a positive quantity');
   }
-  if (new Set(lines.map(l => l.item_id)).size !== lines.length) {
-    throw new HttpError(400, 'Each ingredient can appear only once');
+  for (const s of sections) {
+    if (new Set(s.items.map(l => l.item_id)).size !== s.items.length) {
+      throw new HttpError(400, `An ingredient appears twice in ${s.title ? `"${s.title}"` : 'the same section'}; combine the quantities`);
+    }
   }
 
   const book = await loadBook(t);
@@ -242,16 +325,37 @@ async function validate(t, body, recipeId = null) {
       throw new HttpError(400, `"${item.name}" is a final good and can't be an ingredient. If it goes into other recipes, make it preprocessed on the Items page.`);
     }
   }
-  const loop = findCycle(book, output.id, lines.map(l => l.item_id), recipeId);
+  const loop = findCycle(book, output.id, [...new Set(lines.map(l => l.item_id))], recipeId);
   if (loop) throw new HttpError(400, `This would make a loop: ${loop.join(' → ')}`);
 
-  return { output_item_id: output.id, items_per_batch: Number(items_per_batch), lines };
+  return {
+    output_item_id: output.id,
+    items_per_batch: Number(items_per_batch),
+    description: cleanText(body.description),
+    sections,
+  };
 }
 
-// Same output, yield and ingredient quantities?
+// A saved version in the same shape validate() takes and returns
+async function versionContents(q, versionId) {
+  const v = await q.one('SELECT * FROM recipe_versions WHERE id = $1', [versionId]);
+  const { byVersion } = await loadSections(q, [versionId]);
+  return {
+    output_item_id: v.output_item_id,
+    items_per_batch: v.items_per_batch,
+    description: v.description,
+    sections: byVersion.get(versionId).map(s => ({
+      title: s.title,
+      instructions: s.instructions,
+      items: s.items.map(i => ({ item_id: i.item_id, quantity_per_batch: i.quantity_per_batch })),
+    })),
+  };
+}
+
+// Same output, yield, text, sections and ingredients (in order)?
 function sameContents(a, b) {
-  const key = r => JSON.stringify([r.output_item_id, r.items_per_batch,
-    [...r.lines].sort((x, y) => x.item_id - y.item_id).map(l => [l.item_id, l.quantity_per_batch])]);
+  const key = r => JSON.stringify([r.output_item_id, r.items_per_batch, r.description ?? null,
+    r.sections.map(s => [s.title ?? null, s.instructions ?? null, s.items.map(l => [l.item_id, l.quantity_per_batch])])]);
   return key(a) === key(b);
 }
 
@@ -261,23 +365,26 @@ async function saveVersion(t, recipeId, r, note, userId) {
   const recipe = await t.one('SELECT * FROM recipes WHERE id = $1 FOR UPDATE', [recipeId]);
   if (!recipe) throw new HttpError(404, 'Recipe not found');
 
-  if (recipe.current_version_id) {
-    const current = await t.query('SELECT item_id, quantity_per_batch FROM recipe_items WHERE version_id = $1', [recipe.current_version_id]);
-    if (sameContents(r, { output_item_id: recipe.output_item_id, items_per_batch: recipe.items_per_batch, lines: current })) {
-      throw new HttpError(400, 'Nothing changed, so no new version was saved');
-    }
+  if (recipe.current_version_id && sameContents(r, await versionContents(t, recipe.current_version_id))) {
+    throw new HttpError(400, 'Nothing changed, so no new version was saved');
   }
 
   const { id: versionId, version_no } = await t.one(`
-    INSERT INTO recipe_versions (recipe_id, version_no, output_item_id, items_per_batch, note, created_by)
-    VALUES ($1, (SELECT COALESCE(MAX(version_no), 0) + 1 FROM recipe_versions WHERE recipe_id = $1), $2, $3, $4, $5)
+    INSERT INTO recipe_versions (recipe_id, version_no, output_item_id, items_per_batch, description, note, created_by)
+    VALUES ($1, (SELECT COALESCE(MAX(version_no), 0) + 1 FROM recipe_versions WHERE recipe_id = $1), $2, $3, $4, $5, $6)
     RETURNING id, version_no
-  `, [recipeId, r.output_item_id, r.items_per_batch, note?.trim() || null, userId]);
-  for (const l of r.lines) {
-    await t.query(
-      'INSERT INTO recipe_items (recipe_id, version_id, item_id, quantity_per_batch) VALUES ($1, $2, $3, $4)',
-      [recipeId, versionId, l.item_id, l.quantity_per_batch]
+  `, [recipeId, r.output_item_id, r.items_per_batch, r.description, note?.trim() || null, userId]);
+  for (const [position, s] of r.sections.entries()) {
+    const { id: sectionId } = await t.one(
+      'INSERT INTO recipe_sections (version_id, position, title, instructions) VALUES ($1, $2, $3, $4) RETURNING id',
+      [versionId, position, s.title, s.instructions]
     );
+    for (const l of s.items) {
+      await t.query(
+        'INSERT INTO recipe_items (recipe_id, version_id, section_id, item_id, quantity_per_batch) VALUES ($1, $2, $3, $4, $5)',
+        [recipeId, versionId, sectionId, l.item_id, l.quantity_per_batch]
+      );
+    }
   }
   await t.query(
     'UPDATE recipes SET output_item_id = $2, items_per_batch = $3, current_version_id = $4 WHERE id = $1',
@@ -291,7 +398,7 @@ const conflict = err => {
   throw err;
 };
 
-// New recipe = version 1. { name, output_item_id, items_per_batch, items, note? }
+// New recipe = version 1. { name, output_item_id, items_per_batch, description?, sections, note? }
 router.post('/', ah(async (req, res) => {
   const name = req.body.name?.trim();
   if (!name) throw new HttpError(400, 'Name is required');
@@ -307,7 +414,8 @@ router.post('/', ah(async (req, res) => {
   res.status(201).json(recipe);
 }));
 
-// Edit = save a new version; the name never changes. { output_item_id, items_per_batch, items, note? }
+// Edit = save a new version; the name never changes.
+// { output_item_id, items_per_batch, description?, sections, note? }
 router.put('/:id', ah(async (req, res) => {
   const recipe = await db.tx(async t => {
     const r = await validate(t, req.body, Number(req.params.id));
@@ -322,9 +430,8 @@ router.post('/:id/versions/:versionId/restore', ah(async (req, res) => {
   const recipe = await db.tx(async t => {
     const v = await t.one('SELECT * FROM recipe_versions WHERE id = $1 AND recipe_id = $2', [req.params.versionId, req.params.id]);
     if (!v) throw new HttpError(404, 'Version not found');
-    const items = await t.query('SELECT item_id, quantity_per_batch FROM recipe_items WHERE version_id = $1', [v.id]);
     // Checked again: items may have been re-tiered or other recipes changed since
-    const r = await validate(t, { output_item_id: v.output_item_id, items_per_batch: v.items_per_batch, items }, v.recipe_id);
+    const r = await validate(t, await versionContents(t, v.id), v.recipe_id);
     const note = [`Restored from version ${v.version_no}`, req.body?.note?.trim()].filter(Boolean).join(': ');
     await saveVersion(t, v.recipe_id, r, note, req.user.id);
     return getRecipeWithItems(t, v.recipe_id);

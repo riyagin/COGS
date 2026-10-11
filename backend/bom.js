@@ -21,10 +21,13 @@ async function loadBook(q) {
   const items = new Map((await q.query('SELECT * FROM items')).map(i => [i.id, i]));
   const recipes = new Map((await q.query('SELECT * FROM recipes ORDER BY created_at DESC, id DESC'))
     .map(r => [r.id, { ...r, items: [] }]));
+  // One line per item: an item used in several sections of a recipe counts once, summed
   const lines = await q.query(`
-    SELECT ri.* FROM recipe_items ri
+    SELECT ri.recipe_id, ri.item_id, SUM(ri.quantity_per_batch) AS quantity_per_batch
+    FROM recipe_items ri
     JOIN recipes r ON r.id = ri.recipe_id AND ri.version_id = r.current_version_id
-    ORDER BY ri.id
+    GROUP BY ri.recipe_id, ri.item_id
+    ORDER BY MIN(ri.id)
   `);
   for (const line of lines) {
     recipes.get(line.recipe_id)?.items.push(line);

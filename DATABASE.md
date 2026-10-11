@@ -52,7 +52,8 @@ A JSON view of the same data is served by the app (`/api/*` on the deployed site
 | `GET /api/inventory` | all lots, with `unit_price` pre-computed |
 | `GET /api/inventory/stock` | per-item `total_remaining`, `total_value`, `avg_unit_price` |
 | `GET /api/purchases` | purchases with lines and payment status |
-| `GET /api/recipes` / `GET /api/recipes/:id` | recipes (with expected unit cost); ingredients on the detail route |
+| `GET /api/recipes` / `GET /api/recipes/:id` | recipes (with expected unit cost); description, `sections` (each with `items`) and flat `items` on the detail route |
+| `GET /api/recipes/:id/versions` | every version, newest first, each with its description, sections and ingredients |
 | `GET /api/recipes/:id/tree` | recipe expanded through its preprocessed ingredients, with costs |
 | `GET /api/production` | production runs (auto-made sub-runs have `parent_production_id`) |
 | `GET /api/production/preview?recipe_id=&batches=&auto_produce=1&whole_batches=1` | costed what-if plan, consumes nothing |
@@ -190,8 +191,18 @@ version in use, and `recipes.output_item_id` / `items_per_batch` mirror it. Rest
 version saves a copy of it as the newest version; nothing is ever overwritten. Recipes that
 existed before versioning are version 1, dated with the recipe's `created_at`.
 
+Each version is written like a document: `recipe_versions.description` (free text shown
+first), then `recipe_sections` (`version_id` FK **ON DELETE CASCADE**, `position` 0, 1, 2…,
+`title` e.g. "Filling", `instructions` = the steps, **one per line**, shown numbered). Every
+version has at least one section; versions from before sections existed have one untitled
+section (`title` NULL) holding all their ingredients. Editing only the text still saves a new
+version, so the wording of every version is kept.
+
 `recipe_items`: `recipe_id` FK (**ON DELETE CASCADE**), `version_id` FK → `recipe_versions`,
-`item_id` FK, `quantity_per_batch` (in the ingredient's own `unit_type`).
+`section_id` FK → `recipe_sections`, `item_id` FK, `quantity_per_batch` (in the ingredient's
+own `unit_type`), in the order written (`ORDER BY id`). An item may appear in several
+sections of one version (never twice in one section): for costing and production, **sum**
+its quantities per recipe.
 ⚠️ Rows for **all** versions live here: the current ingredients are
 `WHERE version_id = recipes.current_version_id`, never just `WHERE recipe_id = …`.
 
